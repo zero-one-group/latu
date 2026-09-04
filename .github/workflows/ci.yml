@@ -82,11 +82,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Both bind-mount sources must exist before compose runs, owned by the runner: Docker
-      # creates a missing one as root, and then `mix fixtures` cannot write into fixtures/ and
-      # Spark — uid 185 in the image — cannot write its warehouse.
-      - run: mkdir -p fixtures warehouse && chmod 0777 warehouse
-
       # Start the JVMs first and come back for them: two Spark cold starts overlap with the
       # BEAM setup below instead of following it. Both containers, fresh per run — the
       # reattach server holds abandoned executions by design, so nothing is reused across runs.

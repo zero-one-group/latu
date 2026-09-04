@@ -44,7 +44,6 @@ services:
       start_period: 15s
     volumes:
       - ./fixtures:/fixtures:ro
-      - ./warehouse:/opt/spark/work-dir/spark-warehouse
 
   spark-reattach:
     image: apache/spark:4.2.0
