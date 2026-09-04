@@ -1132,3 +1132,16 @@ maintainer's Mac never saw it. The mount is gone; the warehouse lives at
 discarded with it. `fixtures/` stays a bind mount because the host writes it and the container
 only reads it — and `fixtures/.gitkeep` is tracked so a fresh clone has the directory before
 compose can create it as root.
+
+## 2026-09-04 — `Latu.to_ddl/2` is dropped rather than shipped hidden (M14.3)
+
+It was `@doc false` with one caller, a test. A hidden function in a 0.1.0 tree is a promise
+nobody made and everybody can rely on; `JsonToDDL` stays reachable as an `analyze` arm through
+`Latu.Client`, which is where the integration test now exercises it. `parse_ddl/2` remains the
+public direction — `docs/deviations.md` says why only that one is.
+
+## 2026-09-04 — `mix test` runs with `--warnings-as-errors` (M14.3)
+
+`elixirc_options: [warnings_as_errors: true]` covers `lib/`; `mix test` compiles `test/` itself
+and was the one path a warning could take through CI. Both aliases now pass the flag. The cost
+is the same one `lib/` already pays: an unused variable in a test is a red build.

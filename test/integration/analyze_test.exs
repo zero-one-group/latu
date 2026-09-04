@@ -309,14 +309,15 @@ defmodule Latu.Integration.AnalyzeTest do
       assert {:error, %Latu.Error{}} = Latu.parse_ddl(session, "id NOT A TYPE")
     end
 
-    test "the other direction, which is not API but is the only test of that arm", %{
+    test "the other direction has no facade, so the arm is exercised through the internals", %{
       session: session
     } do
       json =
         ~s({"type":"struct","fields":) <>
           ~s([{"name":"id","type":"integer","nullable":true,"metadata":{}}]})
 
-      assert {:ok, ddl} = Latu.to_ddl(session, json)
+      arm = Latu.Plan.analyze(:json_to_ddl, json)
+      assert {:ok, ddl, _session} = Latu.Client.analyzed(session, arm)
       assert ddl =~ "id"
     end
   end

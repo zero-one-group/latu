@@ -2274,16 +2274,6 @@ defmodule Latu do
   @spec to(DataFrame.t(), Plan.data_type()) :: DataFrame.t()
   defdelegate to(df, schema), to: DataFrame
 
-  # The other direction: Spark's JSON schema form to DDL. Not API — nothing here holds a schema
-  # as JSON.
-  @doc false
-  @spec to_ddl(Session.t(), String.t()) :: {:ok, String.t()} | {:error, Error.t()}
-  def to_ddl(%Session{} = session, json) when is_binary(json) do
-    with {:ok, ddl, _session} <- Client.analyzed(session, Plan.analyze(:json_to_ddl, json)) do
-      {:ok, ddl}
-    end
-  end
-
   @doc """
   Fill nulls with a value.
 

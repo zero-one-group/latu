@@ -190,6 +190,26 @@ defmodule Latu.Integration.ReshapeTest do
       assert hinted == plain
     end
 
+    test "a column parameter reaches the server as a literal or as a reference alike", %{
+      session: session
+    } do
+      # `Latu.hint/3`'s docs claim both spellings are valid plans. The server's `transformHint`
+      # turns a string literal into an attribute and keeps an attribute as it is, so the two
+      # must partition identically; if either is refused, the docstring is wrong, not the test.
+      plain = session |> Latu.range(6) |> Latu.collect!()
+
+      for column <- ["id", :id] do
+        hinted =
+          session
+          |> Latu.range(6)
+          |> Latu.hint("repartition", [2, column])
+          |> Latu.collect!()
+          |> Enum.sort_by(& &1.id)
+
+        assert hinted == plain, "hint(\"repartition\", [2, #{inspect(column)}])"
+      end
+    end
+
     test "an unknown hint is ignored rather than refused, which is Spark's own rule", %{
       session: session
     } do

@@ -157,15 +157,17 @@ defmodule Latu.MixProject do
     [
       "proto.generate": &generate_proto/1,
       fixtures: &generate_fixtures/1,
+      # `--warnings-as-errors` because `mix test` compiles test files itself, outside
+      # `elixirc_options`; without it a warning in test/ is the one kind CI lets through.
       check: [
         "format --check-formatted",
         "compile",
-        "test"
+        "test --warnings-as-errors"
       ],
       "check.all": [
         "format --check-formatted",
         "compile",
-        "test --include integration"
+        "test --include integration --warnings-as-errors"
       ]
     ]
   end
