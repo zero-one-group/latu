@@ -26,7 +26,14 @@ defmodule Latu.ExamplesTest do
   #     unresolved rather than wrong.
   #   * the corpus floor — raise it as the docs grow.
 
-  @extras ["README.md", "CONTRIBUTING.md", "usage-rules.md", "CLAUDE.md", "docs/deviations.md"]
+  @extras [
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "usage-rules.md",
+    "CLAUDE.md",
+    "docs/deviations.md"
+  ]
 
   @excused %{
     "docs/decisions.md" =>

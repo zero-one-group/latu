@@ -19,13 +19,14 @@ font installed.
 
 ## README header
 
-GitHub renders `<picture>` and honours the viewer's theme:
+GitHub renders `<picture>` and honours the viewer's theme. The URLs are absolute because the
+same README renders on hex.pm, where a relative `assets/...` path resolves to nothing:
 
 ```html
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/latu-lockup-dark.svg">
-    <img alt="Latu · ꦭꦠꦸ" src="assets/latu-lockup.svg" width="420">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zero-one-group/latu/main/assets/latu-lockup-dark.svg">
+    <img alt="Latu" src="https://raw.githubusercontent.com/zero-one-group/latu/main/assets/latu-lockup.svg" width="360">
   </picture>
 </p>
 ```

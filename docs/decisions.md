@@ -1145,3 +1145,15 @@ public direction — `docs/deviations.md` says why only that one is.
 `elixirc_options: [warnings_as_errors: true]` covers `lib/`; `mix test` compiles `test/` itself
 and was the one path a warning could take through CI. Both aliases now pass the flag. The cost
 is the same one `lib/` already pays: an unused variable in a test is a red build.
+
+## 2026-09-04 — What the Hex package carries, and what it does not (M14.3)
+
+`files` is Hex's default list plus `usage-rules.md`, which tooling reads out of `deps/`. Not
+`assets/`: nothing in the package reads an image, hexdocs are built from the working tree at
+publish time rather than from the tarball, and 196 KB of logos would ride along on every
+`deps.get` for no reader. The README's lockup uses absolute `raw.githubusercontent.com` URLs
+because the same file renders on hex.pm, where a relative `assets/...` path resolves to nothing;
+the guide links stay relative because ExDoc rewrites those to the rendered pages, which is
+worth more than a working link on hex.pm. `CHANGELOG.md` is an extra, so hex.pm's Changelog
+link points at hexdocs. `source_ref` is `"v#{@version}"`: the tag moves only when the version
+does.
