@@ -1119,3 +1119,16 @@ the compiler, not by ExDoc. **No page is exempted**; the four repo-only links
 (`docs/decisions.md`, `CLAUDE.md`, `LICENSE`) are plain code spans, because a link that 404s
 for every reader of the published docs is not a link. ExDoc resolves an extra link by basename
 alone, so `docs_test.exs` checks both halves of every relative link.
+
+## 2026-09-04 — The warehouse stays inside the container (M14.2)
+
+`docker-compose.yml` bind-mounted `./warehouse` over Spark's warehouse directory. Nothing on the
+host read it; its one effect was that tables outlived a recreate, which the tests never rely on.
+On Linux Docker it was a defect: a missing bind-mount source is created root-owned, and the
+`apache/spark` image runs as uid 185, so `save_as_table` failed with a permission error — on
+CI first, and for any Linux contributor next. Docker Desktop maps ownership, which is why the
+maintainer's Mac never saw it. The mount is gone; the warehouse lives at
+`/opt/spark/work-dir/spark-warehouse` in the container, writable on every platform, and is
+discarded with it. `fixtures/` stays a bind mount because the host writes it and the container
+only reads it — and `fixtures/.gitkeep` is tracked so a fresh clone has the directory before
+compose can create it as root.

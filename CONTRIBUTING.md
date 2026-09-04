@@ -4,7 +4,7 @@ Requires Elixir ~> 1.20, Docker, `protoc`, and Python 3 for the plan oracle.
 
 ```bash
 mix deps.get
-docker compose up -d                   # both spark servers; the reattach profile is not optional
+docker compose up -d --wait            # both spark servers; the reattach profile is not optional
 python3 -m venv dev/.venv && \
     dev/.venv/bin/pip install \
     -r dev/requirements.txt            # the plan oracle

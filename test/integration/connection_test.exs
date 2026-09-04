@@ -42,6 +42,20 @@ defmodule Latu.Integration.ConnectionTest do
   end
 
   test "reads SPARK_REMOTE when given no URL" do
+    # Set here rather than assumed: a checkout that followed CONTRIBUTING.md has no SPARK_REMOTE,
+    # and neither does CI. Nothing else in the suite calls `connect/0`, so the global is safe to
+    # touch under `async: true`; restored afterwards all the same.
+    previous = System.get_env("SPARK_REMOTE")
+    System.put_env("SPARK_REMOTE", @url)
+
+    on_exit(fn ->
+      if previous do
+        System.put_env("SPARK_REMOTE", previous)
+      else
+        System.delete_env("SPARK_REMOTE")
+      end
+    end)
+
     assert {:ok, session} = Latu.connect()
     Latu.disconnect(session)
   end

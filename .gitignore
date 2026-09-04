@@ -29,9 +29,8 @@ latu-*.tar
 # ElixirLS workspace cache
 /.elixir_ls/
 
-# dev/ tooling: python venv, Spark warehouse, generated test fixtures
+# dev/ tooling: python venv, generated test fixtures
 /dev/.venv/
-/warehouse/
 /spark-warehouse/
 /fixtures/*
 !/fixtures/.gitkeep
