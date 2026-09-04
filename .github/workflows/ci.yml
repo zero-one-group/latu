@@ -1,0 +1,118 @@
+# Two tiers plus docs, all secret-free. `check` is the cheap tier and the one branch protection
+# requires; `integration` brings up both Spark servers and is made required only once it has
+# proved stable on the hosted runners. Every command here is one a contributor runs locally
+# (CONTRIBUTING.md) — the workflow adds caching and ordering, nothing else.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# No MIX_ENV: `mix check` and `mix check.all` set their own (mix.exs `preferred_envs`) and
+# `mix docs` needs dev, where ex_doc lives. Each step runs in the env it would locally.
+
+jobs:
+  check:
+    name: mix check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # Elixir/OTP come from .tool-versions — one home for the pin, shared with asdf/mise
+      # locally. CI is the only place the 1.20 type checker runs besides the maintainer's
+      # machine, so the pin is exact.
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+
+      # The backstop for the incremental compiler: `_build` is restored from cache, and
+      # `warnings_as_errors` only holds for files the compiler actually touches.
+      - run: MIX_ENV=test mix compile --force
+
+      - run: mix check
+
+  docs:
+    name: mix docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+      - uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+      # warnings_as_errors is set in mix.exs's docs config; a dangling reference fails here.
+      - run: mix docs
+
+  integration:
+    name: mix check.all
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      # Start the JVMs first and come back for them: two Spark cold starts overlap with the
+      # BEAM setup below instead of following it. Both containers, fresh per run — the
+      # reattach server holds abandoned executions by design, so nothing is reused across runs.
+      - run: docker compose up -d
+
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+
+      # The data files the integration suite reads. The venv is the oracle's; `mix fixtures`
+      # needs only pyarrow from it, no server. Same commands as CONTRIBUTING.md.
+      - run: python3 -m venv dev/.venv && dev/.venv/bin/pip install -q -r dev/requirements.txt
+      - run: mix fixtures
+
+      # Returns once both healthchecks pass (docker-compose.yml), or fails when one gives up.
+      - run: docker compose up -d --wait
+
+      - run: mix check.all
+
+      - name: Spark logs
+        if: failure()
+        run: docker compose logs --no-color --tail=200

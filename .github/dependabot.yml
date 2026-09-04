@@ -1,0 +1,8 @@
+# Actions only. The Spark image is pinned to 4.2.0 on purpose (re-vendor at 4.5.0), and Mix deps
+# move when a probe says they can — dev/README.md.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

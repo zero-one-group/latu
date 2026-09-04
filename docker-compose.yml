@@ -34,6 +34,14 @@ services:
       - "spark.connect.progress.reportInterval=100ms"
       - "--conf"
       - "spark.ui.port=4040"
+    # `docker compose up -d --wait` returns when this passes. Without it "up" means the JVM
+    # exists, not that the gRPC port is listening, and the first test connects into nothing.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15002"]
+      interval: 5s
+      timeout: 3s
+      retries: 36
+      start_period: 15s
     volumes:
       - ./fixtures:/fixtures:ro
       - ./warehouse:/opt/spark/work-dir/spark-warehouse
@@ -63,5 +71,11 @@ services:
       - "spark.sql.shuffle.partitions=4"
       - "--conf"
       - "spark.ui.port=4040"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15002"]
+      interval: 5s
+      timeout: 3s
+      retries: 36
+      start_period: 15s
     volumes:
       - ./fixtures:/fixtures:ro
