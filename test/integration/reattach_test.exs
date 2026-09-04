@@ -29,12 +29,13 @@ defmodule Latu.Integration.ReattachTest do
     assert {:ok, uncapped, _executed} = run(@normal, @over_cap)
     assert {:ok, reattached, _executed} = run(@capped, @over_cap)
 
-    assert rows(uncapped) == @over_cap
-    assert rows(reattached) == @over_cap
-
     # Offsets are contiguous by construction — Execution refuses a batch that starts anywhere
     # but where the last one ended — so matching totals means no batch was dropped or replayed.
-    assert Enum.map(reattached, & &1.row_count) == Enum.map(uncapped, & &1.row_count)
+    # The batch *shapes* are deliberately not compared: :15002 runs local[1] and :15003 runs
+    # local[*], so its batch boundaries follow the machine's core count (10 partitions on a
+    # laptop, 4 on a CI runner) and matched only where the partition size divided evenly.
+    assert rows(uncapped) == @over_cap
+    assert rows(reattached) == @over_cap
   end
 
   test "the reattached result decodes to the same rows" do

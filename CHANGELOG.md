@@ -3,6 +3,12 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.1.1 — 2026-09-04
+
+The README's links to the guides, `usage-rules`, deviations and contributing are absolute
+hexdocs URLs. hex.pm renders the README from the package, which does not carry those files, so
+the relative links 404'd there. No code change.
+
 ## 0.1.0 — 2026-09-04
 
 First release, against Spark **4.2.0**.

@@ -1154,6 +1154,17 @@ publish time rather than from the tarball, and 196 KB of logos would ride along 
 `deps.get` for no reader. The README's lockup uses absolute `raw.githubusercontent.com` URLs
 because the same file renders on hex.pm, where a relative `assets/...` path resolves to nothing;
 the guide links stay relative because ExDoc rewrites those to the rendered pages, which is
-worth more than a working link on hex.pm. `CHANGELOG.md` is an extra, so hex.pm's Changelog
+worth more than a working link on hex.pm (reversed the same day — next entry). `CHANGELOG.md`
+is an extra, so hex.pm's Changelog
 link points at hexdocs. `source_ref` is `"v#{@version}"`: the tag moves only when the version
 does.
+
+## 2026-09-04 — The README's links are absolute, because hex.pm renders it too (0.1.1)
+
+Measured after publishing: hex.pm rewrites a relative link in the README to
+`repo.hex.pm/preview/latu/<version>/<path>`, and the guides, `docs/deviations.md` and
+`CONTRIBUTING.md` are not in the tarball, so seven links 404'd on the package page. The README is
+the one extra that renders in three places — GitHub, hexdocs, hex.pm — and only an absolute
+`hexdocs.pm/latu/<page>.html` URL works in all three; the other extras render on hexdocs alone
+and keep relative links, which `docs_test.exs` checks (it skips absolute ones). The hex.pm README
+is frozen per version, hence 0.1.1 with no code change.

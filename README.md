@@ -63,8 +63,9 @@ session
 
 `show` prints the table Spark renders, not one Latu formats, so the output matches PySpark
 byte for byte. This page shows the shape of the API; the
-[quick start](docs/guides/quick-start.md) shows results, and every line of it is executed by the
-test suite — which is why the numbers there can be trusted and the ones in a README cannot.
+[quick start](https://hexdocs.pm/latu/quick-start.html) shows results, and every line of it is
+executed by the test suite — which is why the numbers there can be trusted and the ones in a
+README cannot.
 
 ## What is in it
 
@@ -197,18 +198,21 @@ and what it would take, is in `docs/decisions.md`.
 
 ## Where to go next
 
-  * [Quick start](docs/guides/quick-start.md) — connect, build, run; every line of it executed
-  * [Cookbook](docs/guides/cookbook.md) — recipes for the things you actually do
-  * [Coming from PySpark](docs/guides/from-pyspark.md) — the five differences, and a
-    translation table for the calls you make every day
-  * [Coming from Explorer](docs/guides/from-explorer.md) — where the local Elixir dataframe
-    ends and the cluster begins, and how to move frames across the seam
-  * [`usage-rules.md`](usage-rules.md) — the short set of rules that are not guessable from the
-    function names, in the [`usage_rules`](https://github.com/ash-project/usage_rules)
-    convention, so an agent can sync it into its context
-  * [`docs/deviations.md`](docs/deviations.md) — every place the API departs from PySpark,
-    and why
-  * [`CONTRIBUTING.md`](CONTRIBUTING.md) — the servers, the proto oracle, the golden fixtures
+  * [Quick start](https://hexdocs.pm/latu/quick-start.html) — connect, build, run; every line
+    of it executed
+  * [Cookbook](https://hexdocs.pm/latu/cookbook.html) — recipes for the things you actually do
+  * [Coming from PySpark](https://hexdocs.pm/latu/from-pyspark.html) — the five differences,
+    and a translation table for the calls you make every day
+  * [Coming from Explorer](https://hexdocs.pm/latu/from-explorer.html) — where the local Elixir
+    dataframe ends and the cluster begins, and how to move frames across the seam
+  * [`usage-rules.md`](https://hexdocs.pm/latu/usage-rules.html) — the short set of rules that
+    are not guessable from the function names, in the
+    [`usage_rules`](https://github.com/ash-project/usage_rules) convention, so an agent can sync
+    it into its context
+  * [`docs/deviations.md`](https://hexdocs.pm/latu/deviations.html) — every place the API
+    departs from PySpark, and why
+  * [`CONTRIBUTING.md`](https://hexdocs.pm/latu/contributing.html) — the servers, the proto
+    oracle, the golden fixtures
 
 ## SparkEx, and why Latu exists
 
@@ -242,7 +246,7 @@ purpose — streaming and MLlib are separate packages, for the reasons in `docs/
 and verifies more: every plan it builds is diffed against the protobuf PySpark builds for the
 same pipeline, and every documented example is executed. If SparkEx's spelling reads better to
 you, that is a good reason to use SparkEx; the rules behind Latu's are in
-[`docs/deviations.md`](docs/deviations.md).
+[`docs/deviations.md`](https://hexdocs.pm/latu/deviations.html).
 
 ## Acknowledgements
 
