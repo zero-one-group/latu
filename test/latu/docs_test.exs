@@ -67,6 +67,7 @@ defmodule Latu.DocsTest do
   # it current, but it still has to be reachable, which is this list's job.
   @prose_extras [
     "README.md",
+    "CHANGELOG.md",
     "docs/cheatsheet.cheatmd",
     "usage-rules.md",
     "docs/deviations.md",

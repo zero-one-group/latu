@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/latu-lockup-dark.svg">
-    <img alt="Latu" src="assets/latu-lockup.svg" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/zero-one-group/latu/main/assets/latu-lockup-dark.svg">
+    <img alt="Latu" src="https://raw.githubusercontent.com/zero-one-group/latu/main/assets/latu-lockup.svg" width="360">
   </picture>
 </p>
 
@@ -16,11 +16,9 @@ predecessor, is Javanese for *fire*.
 
 ## Install
 
-Not on Hex yet. Until it is:
-
 ```elixir
 def deps do
-  [{:latu, github: "zero-one-group/latu"}]
+  [{:latu, "~> 0.1"}]
 end
 ```
 

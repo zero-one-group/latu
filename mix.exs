@@ -18,12 +18,29 @@ defmodule Latu.MixProject do
       test_ignore_filters: [&String.starts_with?(&1, "test/support/")],
       deps: deps(),
       aliases: aliases(),
+      description: "A native Elixir DataFrame API for Apache Spark, over Spark Connect.",
+      package: package(),
       docs: docs(),
       source_url: @source_url
     ]
   end
 
-  # Hex metadata -- `description`, `package` -- is deliberately absent until the release.
+  defp package do
+    [
+      licenses: ["Apache-2.0"],
+      links: %{
+        "GitHub" => @source_url,
+        "Changelog" => "https://hexdocs.pm/latu/changelog.html",
+        "Spark Connect" => "https://spark.apache.org/docs/latest/spark-connect-overview.html"
+      },
+      # Hex's defaults plus `usage-rules.md`, which tooling reads from the dep. `priv/` carries
+      # the harvested docs and groups the compile refuses without, and the vendored protos.
+      # `assets/` is not shipped: nothing in the package reads it, and the README's images are
+      # absolute URLs.
+      files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
+    ]
+  end
+
   defp docs do
     [
       name: "Latu",
@@ -35,6 +52,7 @@ defmodule Latu.MixProject do
       assets: %{"assets" => "assets"},
       extras: [
         {"README.md", title: "Latu"},
+        "CHANGELOG.md",
         "docs/guides/quick-start.md",
         "docs/guides/cookbook.md",
         "docs/guides/from-pyspark.md",
@@ -117,8 +135,9 @@ defmodule Latu.MixProject do
       default_group_for_doc: fn metadata ->
         if metadata[:module] == Latu.Functions, do: Latu.Functions.Groups.of(metadata[:name])
       end,
-      # No `v0.1.0` tag exists yet; the release swaps this for one.
-      source_ref: "main",
+      # The release tag. Every "view source" link on hexdocs points at it, so it moves only when
+      # the version does.
+      source_ref: "v#{@version}",
       source_url: @source_url
     ]
   end
