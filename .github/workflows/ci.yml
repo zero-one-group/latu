@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Start the JVMs first and come back for them: two Spark cold starts overlap with the
       # BEAM setup below instead of following it. Both containers, fresh per run — the
