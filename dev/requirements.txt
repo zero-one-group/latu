@@ -1,0 +1,4 @@
+# Oracle-side tooling. Not a runtime dependency of Latu.
+# pyspark-client is the thin Connect-only client (~2 MB) rather than the full
+# distribution (~400 MB). Either works for the oracle.
+pyspark-client==4.2.0

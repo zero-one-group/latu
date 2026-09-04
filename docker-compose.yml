@@ -1,0 +1,67 @@
+services:
+  spark-connect:
+    image: apache/spark:4.2.0
+    container_name: latu-spark-connect
+    ports:
+      - "15002:15002"
+      - "4040:4040"
+    entrypoint: ["/opt/spark/sbin/start-connect-server.sh"]
+    command:
+      - "--wait"
+      # Docker Desktop/macOS: local[4] intermittently causes ~60s
+      # server-side Spark write stalls; local[1] is stable.
+      - "--master"
+      - "local[1]"
+      - "--conf"
+      - "spark.connect.grpc.binding.address=0.0.0.0"
+      - "--conf"
+      - "spark.connect.grpc.binding.port=15002"
+      - "--conf"
+      - "spark.sql.session.timeZone=UTC"
+      - "--conf"
+      - "spark.sql.shuffle.partitions=4"
+      # A reliable checkpoint needs a directory, and it is a SparkContext-level setting: the
+      # command carries no path, so `Latu.checkpoint/2` without `local: true` fails outright
+      # unless this is set at startup. (`spark.checkpoint.dir` since Spark 4.0; before that it
+      # was SparkContext.setCheckpointDir only, which Spark Connect cannot reach.)
+      - "--conf"
+      - "spark.checkpoint.dir=/tmp/latu_checkpoints"
+      # Progress messages are sent on a timer, default 2s, so a query shorter than that reports
+      # nothing at all. 100ms lets `test/integration/progress_test.exs` measure the plumbing
+      # without holding local[1]'s single task slot for seconds. A conf change here needs
+      # `docker compose up -d --force-recreate spark-connect`.
+      - "--conf"
+      - "spark.connect.progress.reportInterval=100ms"
+      - "--conf"
+      - "spark.ui.port=4040"
+    volumes:
+      - ./fixtures:/fixtures:ro
+      - ./warehouse:/opt/spark/work-dir/spark-warehouse
+
+  spark-reattach:
+    image: apache/spark:4.2.0
+    container_name: latu-spark-reattach
+    ports:
+      - "15003:15002"
+      - "4041:4040"
+    entrypoint: ["/opt/spark/sbin/start-connect-server.sh"]
+    command:
+      - "--wait"
+      - "--conf"
+      - "spark.connect.grpc.binding.address=0.0.0.0"
+      - "--conf"
+      - "spark.connect.grpc.binding.port=15002"
+      - "--conf"
+      - "spark.connect.execute.reattachable.senderMaxStreamDuration=5s"
+      - "--conf"
+      - "spark.connect.execute.reattachable.senderMaxStreamSize=1m"
+      - "--conf"
+      - "spark.connect.execute.reattachable.observerRetryBufferSize=10m"
+      - "--conf"
+      - "spark.sql.session.timeZone=UTC"
+      - "--conf"
+      - "spark.sql.shuffle.partitions=4"
+      - "--conf"
+      - "spark.ui.port=4040"
+    volumes:
+      - ./fixtures:/fixtures:ro

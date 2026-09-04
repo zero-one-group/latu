@@ -1,0 +1,288 @@
+# Cheatsheet
+
+Generated from the compiled modules by `dev/cheatsheet.exs`; `test/latu/cheatsheet_test.exs`
+fails if it drifts. **`+ !`** marks a verb with a raising twin of the same arity.
+
+Spark's ~500 functions are not here — they are a reference, not a cheatsheet, and
+`Latu.Functions` is that page, grouped by Spark's own categories.
+
+## Verbs
+
+Called qualified, the way `Enum` is.
+
+### Session
+
+| | |
+| --- | --- |
+| `clone_session/2` | Fork the session on the server, returning the clone. **+ !** |
+| `connect/2` | Connect to a Spark Connect server. **+ !** |
+| `disconnect/2` | Close the channel. **+ !** |
+| `error_details/2` | Fill in an error's full server-side cause chain. **+ !** |
+| `interrupt/2` | Cancel executions on the server, returning the operation ids it interrupted.… |
+| `release_session/2` | End the session on the server, without closing the channel. **+ !** |
+| `spark_version/1` | The Spark version the server reports, e.g. **+ !** |
+| `status/2` | What the server is running for this session: one map per operation, with its… |
+
+### Configuration
+
+| | |
+| --- | --- |
+| `conf/2,3` | A session config value, or nil where Spark has nothing to give. **+ !** |
+| `confs/2` | Every config the session has **set**, as a map. **+ !** |
+| `fetch_conf/2` | `conf/2` with an error for a key Spark does not know. **+ !** |
+| `is_modifiable/2` | Whether Spark will let this session change that config. **+ !** |
+| `set_conf/3` | Set one config on the server. **+ !** |
+| `set_confs/2` | Set several configs in one round-trip. **+ !** |
+| `unset_conf/2` | Put a config back to Spark's default. **+ !** |
+
+### Sources
+
+| | |
+| --- | --- |
+| `create_dataframe/3` | A DataFrame from local data — `collect/2`'s inverse. **+ !** |
+| `range/2,3,4,5` | A DataFrame of one `id` column of longs, counting up to but not including… |
+| `read/2` | Read from a data source. |
+| `sql/3` | Run SQL. **+ !** |
+| `table/2,3` | Read a catalog table by name. |
+
+### Transformations
+
+| | |
+| --- | --- |
+| `agg/2` | Apply aggregates, giving a DataFrame back. |
+| `as/2` | Name the DataFrame, so its columns can be qualified as `name.column`. |
+| `checkpoint/2` | Materialise the frame on the server and hand back a frame that reads the… |
+| `coalesce/2` | Fewer partitions without a shuffle. |
+| `col/2` | A reference to one of this DataFrame's columns, tagged with its identity. |
+| `col_regex/2` | Columns whose names match a Java regex. |
+| `count/2` | Rows per group (lazy), or how many rows there are (an action). **+ !** |
+| `cross_join/2` | Every pairing of the two frames: `join/3` with `how: :cross` and no… |
+| `cube/2` | Group by every combination of these columns. |
+| `distinct/2` | Drop duplicate rows, by these columns or by all of them. |
+| `drop/2` | Remove columns. |
+| `except/3` | Rows in the first and not the second, distinct unless `all: true`. |
+| `exists/1` | A predicate that holds when this DataFrame has any rows. |
+| `filter/2` | Keep the rows the condition holds for. |
+| `group_by/2` | Group rows, giving a `Latu.GroupedData` that `agg/2` turns back into a… |
+| `grouping_sets/3` | Group by an explicit list of grouping sets — SQL's `GROUPING SETS`. |
+| `hint/3` | Attach a planner hint. |
+| `intersect/3` | Rows in both, distinct unless `all: true`. |
+| `join/3` | Join two DataFrames. |
+| `join_as_of/3` | An as-of join: match each left row with the *nearest* right row instead of… |
+| `lateral_join/3` | A lateral join: the right side may reference the left's columns, row by… |
+| `limit/2` | Keep at most `count` rows. |
+| `merge/2` | Run the merge. **+ !** |
+| `merge_into/4` | Start a merge: upsert this frame into a target table. |
+| `merge_with_metrics/2` | `merge/2`, and the metrics an `observe/3` in the source plan asked… |
+| `metadata_column/2` | A hidden metadata column — `_metadata` on a file source, and whatever a… |
+| `nearest_by_join/4` | A nearest-neighbour join: rank the right side per left row and keep the… |
+| `observe/3` | Observe aggregates over a frame without changing what it returns. |
+| `offset/2` | Skip the first `count` rows. |
+| `order_by/2` | `sort/2`, spelled Spark's other way. |
+| `parse/2` | Parse a frame of strings into a structured frame. |
+| `pivot/3` | Pivot a grouped frame on a column. |
+| `random_split/3` | Split the frame into slices whose sizes are proportional to `weights`. |
+| `release/1` | Free a checkpointed frame's server-side storage. **+ !** |
+| `rename/2` | Rename columns, by mapping or positionally. |
+| `repartition/2,3` | Shuffle into `count` partitions, or partition by these columns, or both. |
+| `repartition_by_range/3` | Range-partition the frame by these columns. |
+| `rollup/2` | Group by every prefix of these columns, plus the grand total. |
+| `sample/3` | A random fraction of the rows. |
+| `scalar/1` | This DataFrame as a scalar subquery — a single value, hoisted into the plan that… |
+| `select/2` | Keep these columns, in this order. |
+| `select_expr/2` | Keep these SQL expressions, written as strings. |
+| `sort/2` | Sort rows. |
+| `sort_within_partitions/2` | Sort within each partition, leaving the partitions unordered. |
+| `table_changes/3` | A table's change feed, as a frame. |
+| `table_function/3` | A table-valued function, as a frame. |
+| `transpose/2` | Rows to columns. |
+| `union/3` | All the rows of both, duplicates kept. |
+| `unpivot/3` | Wide to long: turn a set of columns into two, one holding their names and one… |
+| `when_matched/3` | Add a `WHEN MATCHED` clause: what to do with a source row that has a match… |
+| `when_not_matched/3` | Add a `WHEN NOT MATCHED` clause: what to do with a source row that has… |
+| `when_not_matched_by_source/3` | Add a `WHEN NOT MATCHED BY SOURCE` clause: what to do with a… |
+| `where/2` | `filter/2`, spelled Spark's other way. |
+| `with_checkpoint/3` | Checkpoint, run your function over the result, and free it on the way… |
+| `with_columns/2` | Add or replace columns, keeping the rest. |
+| `with_metadata/3` | Attach metadata to an existing column. |
+| `zip_with_index/2` | Add a column of consecutive indices, starting at 0. |
+
+### Actions
+
+| | |
+| --- | --- |
+| `approx_quantile/5` | Approximate quantiles. **+ !** |
+| `cache/1` | `persist/2` at Spark's default level, which is what `cache` means everywhere. **+… |
+| `collect/2` | All the rows, as maps with atom keys. **+ !** |
+| `collect_with_metrics/2` | `collect/2`, and the metrics `observe/3` asked for. **+ !** |
+| `columns/1` | The column names. **+ !** |
+| `corr/4` | Correlation of two numeric columns. **+ !** |
+| `count_with_metrics/2` | `count/2`, and the metrics `observe/3` asked for. **+ !** |
+| `cov/4` | Sample covariance of two numeric columns. **+ !** |
+| `create_temp_view/3` | Register the DataFrame as a temporary view, visible to `sql/3`. **+ !** |
+| `crosstab/3` | A contingency table of two columns. |
+| `describe/2` | `summary/2`'s fixed five — count, mean, stddev, min, max — over the columns… |
+| `drop_na/2` | Drop rows by how many non-null values they carry. |
+| `dtypes/1` | Name and type per column, as pairs — PySpark's `df.dtypes`. **+ !** |
+| `explain/2` | Print the plan Spark would run, and return `:ok`. **+ !** |
+| `explain_string/2` | The plan as a string, where `explain/2` prints it. **+ !** |
+| `fill_na/3` | Fill nulls with a value. |
+| `first/2` | The first row, or nil when there are none. **+ !** |
+| `freq_items/3` | Frequent items, one array column of candidates per column named. |
+| `glimpse/2` | A transposed preview: one line per column, with its type and its first few… |
+| `head/3` | `first/2` under PySpark's other name: one row or nil, not a list. **+ !** |
+| `input_files/1` | The files this frame reads, as the server resolved them. **+ !** |
+| `insert_into/3` | Insert into an existing table, by position. **+ !** |
+| `insert_into_with_metrics/3` | `insert_into/3`, and the metrics `observe/3` asked for. **+ !** |
+| `is_empty/1` | Whether the frame has no rows. **+ !** |
+| `is_local/1` | Whether Spark can run this plan without a cluster — `spark.range(5)` cannot.… |
+| `is_streaming/1` | Whether the frame is a streaming source. **+ !** |
+| `parse_ddl/2` | What a DDL schema string means to the server, in `schema/1`'s shape. **+ !** |
+| `parse_ddl_type/2` | The `DataType` message the server parses a DDL string into. **+ !** |
+| `persist/2` | Ask the server to cache this frame, and hand it back. **+ !** |
+| `print_schema/2` | Print the schema tree Spark renders, and return `:ok`. **+ !** |
+| `replace/3` | Replace values with other values, as `{old, new}` pairs. |
+| `same_semantics/2` | Whether two frames compute the same thing, up to the plan Spark… |
+| `sample_by/4` | A stratified sample: a fraction of the rows per stratum. |
+| `save_as_table/3` | Write as a catalog table. **+ !** |
+| `save_as_table_with_metrics/3` | `save_as_table/3`, and the metrics `observe/3` asked for.… |
+| `schema/1` | The frame's columns, with Spark's own name for each type. **+ !** |
+| `semantic_hash/1` | A hash of the analysed plan: equal for frames `same_semantics/2` calls… |
+| `show/2` | Print the table Spark renders, and return `:ok`. **+ !** |
+| `storage_level/1` | How the server is storing this frame, if at all. **+ !** |
+| `stream/2` | The result as a lazy stream of `Explorer.DataFrame`s, one per Arrow batch. |
+| `summary/2` | Summary statistics: one row per statistic, one column per column Spark can… |
+| `tail/3` | The last `count` rows, as maps. **+ !** |
+| `take/3` | The first `count` rows, as maps — `limit/2` then `collect/2`, as in PySpark. **+… |
+| `to/2` | Reconcile a frame to a target schema. |
+| `to_arrow/2` | The raw Arrow IPC binaries, one per batch, bypassing Latu's decoder and schema… |
+| `to_explorer/2` | The result as one `Explorer.DataFrame`. **+ !** |
+| `to_explorer_with_metrics/2` | `to_explorer/2`, and the metrics `observe/3` asked for. **+ !** |
+| `to_html/2` | The table `show/2` prints, as an HTML string. **+ !** |
+| `tree_string/2` | The schema tree as a string, where `print_schema/2` prints it. **+ !** |
+| `unpersist/2` | Drop the server's cache of this frame, and hand it back. **+ !** |
+| `write/2` | Write to a path. **+ !** |
+| `write_v2/3` | Write to a table through Spark's v2 API (`df.writeTo` in PySpark). **+ !** |
+| `write_v2_with_metrics/3` | `write_v2/3`, and the metrics `observe/3` asked for. **+ !** |
+| `write_with_metrics/2` | `write/2`, and the metrics `observe/3` asked for. **+ !** |
+
+## Expressions
+
+`import Latu.Column` — small enough to compose by hand.
+
+### Building blocks
+
+| | |
+| --- | --- |
+| `cast/2` | Cast to a Spark type, spelled as SQL spells it. |
+| `col/1` | A column reference. |
+| `expr/1` | Raw SQL, parsed by the server. |
+| `fun/3` | Any Spark function, by name. |
+| `lit/1` | A typed literal. |
+| `star/0` | Every column. |
+| `try_cast/2` | `cast/2`, but null where a cast would fail. |
+
+### Operators
+
+| | |
+| --- | --- |
+| `add/2` | Spark's `+`. |
+| `all/1` | Every predicate holds. |
+| `any/1` | Any predicate holds. |
+| `divide/2` | Spark's `/`. |
+| `equal/2` | Spark's `==`. |
+| `equal_null_safe/2` | Spark's `<=>`. |
+| `greater/2` | Spark's `>`. |
+| `greater_equal/2` | Spark's `>=`. |
+| `less/2` | Spark's `<`. |
+| `less_equal/2` | Spark's `<=`. |
+| `multiply/2` | Spark's `*`. |
+| `not_/1` | Negate a predicate. |
+| `not_equal/2` | Not equal. |
+| `pow/2` | Spark's `power`. |
+| `remainder/2` | Spark's `%`. |
+| `subtract/2` | Spark's `-`. |
+
+### Predicates
+
+| | |
+| --- | --- |
+| `between/3` | Between two bounds, inclusive. |
+| `contains/2` | Spark's `contains`. |
+| `ends_with/2` | Spark's `endsWith`. |
+| `ilike/2,3` | Spark's `ilike`. |
+| `is_nan/1` | Spark's `isNaN`. |
+| `is_not_null/1` | Spark's `isNotNull`. |
+| `is_null/1` | Spark's `isNull`. |
+| `isin/2` | One of these values, or one of a DataFrame's rows. |
+| `like/2,3` | Spark's `like`. |
+| `rlike/2` | Spark's `rlike`. |
+| `starts_with/2` | Spark's `startsWith`. |
+
+### Windows
+
+| | |
+| --- | --- |
+| `over/2` | Evaluate an expression over a window. |
+
+### Sort keys
+
+| | |
+| --- | --- |
+| `asc/1` | A sort key, as PySpark's `Column.asc`. |
+| `asc_nulls_first/1` | A sort key, as PySpark's `Column.asc_nulls_first`. |
+| `asc_nulls_last/1` | A sort key, as PySpark's `Column.asc_nulls_last`. |
+| `desc/1` | A sort key, as PySpark's `Column.desc`. |
+| `desc_nulls_first/1` | A sort key, as PySpark's `Column.desc_nulls_first`. |
+| `desc_nulls_last/1` | A sort key, as PySpark's `Column.desc_nulls_last`. |
+
+## Windows
+
+`alias Latu.Window, as: W`.
+
+### General
+
+| | |
+| --- | --- |
+| `order_by/1,2` | Order within each partition. |
+| `partition_by/1,2` | Partition the rows. |
+| `range_between/3` | A frame counted in values of the ordering column. |
+| `rows_between/3` | A frame counted in rows, relative to the current one. |
+
+## Catalog
+
+Databases, tables and views — `spark.catalog` in PySpark.
+
+### Catalogs and databases
+
+| | |
+| --- | --- |
+| `current_catalog/1` | The current catalog's name. **+ !** |
+| `current_database/1` | The current database's name. **+ !** |
+| `database_exists/2` | Whether the database exists. **+ !** |
+| `list_catalogs/2` | Every catalog, optionally filtered: `pattern: "spark*"` (SQL LIKE, `*`… |
+| `list_databases/2` | Every database, optionally filtered by `:pattern`. **+ !** |
+| `set_current_catalog/2` | Switch catalogs. **+ !** |
+| `set_current_database/2` | Switch databases. **+ !** |
+
+### Tables and views
+
+| | |
+| --- | --- |
+| `drop_global_temp_view/2` | Drop a global temp view; answers like `drop_temp_view/2`. **+ !** |
+| `drop_table/3` | Drop a table. **+ !** |
+| `drop_temp_view/2` | Drop a temp view. **+ !** |
+| `drop_view/3` | Drop a (non-temporary) view. **+ !** |
+| `list_columns/3` | The table's columns: name, dataType, nullable, partition and bucket flags.… |
+| `list_tables/2` | Tables and views, temporary ones included. **+ !** |
+| `refresh_table/2` | Refresh Spark's metadata and cache for a table whose files changed… |
+| `table_exists/3` | Whether the table or view exists. **+ !** |
+
+### Caching
+
+| | |
+| --- | --- |
+| `cache_table/2` | Cache the table at Spark's default storage level (docs/deviations.md). **+… |
+| `clear_cache/1` | Drop every cached table. **+ !** |
+| `is_cached/2` | Whether the table is cached. **+ !** |
+| `uncache_table/2` | Drop the table from the cache. **+ !** |

@@ -1,0 +1,19 @@
+root {
+  common {
+    plan_id: 1
+  }
+  show_string {
+    input {
+      common {
+        plan_id: 0
+      }
+      range {
+        start: 0
+        end: 5
+        step: 1
+      }
+    }
+    num_rows: 20
+    truncate: 20
+  }
+}

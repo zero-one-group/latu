@@ -1,0 +1,2 @@
+
+id INT, tags ARRAY<STRING>
