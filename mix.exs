@@ -185,10 +185,11 @@ defmodule Latu.MixProject do
         "compile",
         "test --warnings-as-errors"
       ],
+      # `--max-cases 4` matches the dev server's one task slot; `docs/decisions.md`.
       "check.all": [
         "format --check-formatted",
         "compile",
-        "test --include integration --warnings-as-errors"
+        "test --include integration --warnings-as-errors --max-cases 4"
       ]
     ]
   end

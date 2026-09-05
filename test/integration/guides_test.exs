@@ -19,10 +19,8 @@ defmodule Latu.Integration.GuidesTest do
   @moduletag :capture_log
 
   # **A guide is one test containing a dozen round trips, and ExUnit's 60s budget is for one
-  # assertion.** `docs/guides/quick-start.md` timed out at exactly 60_000ms on its first full
-  # run — fourteen sequential executions, one of them a write, against a `--master local[1]`
-  # server shared with the rest of the suite running twenty cases at a time. The cookbook's
-  # nineteen passed in the same run, which is what marginal looks like.
+  # assertion.** `docs/guides/quick-start.md` runs fourteen sequential executions, one of them a
+  # write, against a `--master local[1]` server shared with the rest of the suite.
   #
   # 180s rather than a round number: `docs/decisions.md`'s write-stall entry settled on
   # 150_000 for the same shape of problem before `local[1]` retired it, and a guide does more

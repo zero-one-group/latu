@@ -466,6 +466,23 @@ results after a shuffle. Consequence: pre-shuffle results arrive as one batch; t
 "assert totals, never batch counts" makes that a non-event. `dev/probe_writes.{exs,py}` stay
 checked in for if it reappears.
 
+## 2026-09-05 — `mix check.all` runs `--max-cases 4`, because the dev server has one task slot
+
+`--master local[1]` (the write-stall verdict above) means one task slot, and 27 of the 32
+integration modules are `async: true` against it. ExUnit's default `max_cases` is
+`schedulers_online() * 2`, so the suite's concurrency was the machine's core count — 20 on the
+maintainer's laptop, 8 on a CI runner — and a test could queue behind nineteen others until it
+hit ExUnit's 60 s wall having done seconds of work. `join_as_of` forward was the one that showed
+it: 60 s in the suite, 7 s alone, four runs out of four. That asymmetry is why the suite was
+flakier on the laptop than in CI, which is the wrong way round for a gate.
+
+The flag bounds queue depth, not throughput — the server serialises the work either way — so it
+costs no wall time on the integration half, and it makes the concurrency the same number
+everywhere rather than a property of the machine. Raising a test's `:timeout` was the rejected
+fix: `guides_test.exs` earns its 180 s by doing fourteen round trips in one test, but a
+six-row `join_as_of` that waits 60 s is queueing, and a bigger budget would also have hidden the
+reattach deadlock ML1 has to rule out.
+
 ## 2026-09-01 — M8.3: sql is a Command, views are one verb, the catalog is a table of relations
 
 **`Latu.sql/3` sends `Command.sql_command`, eagerly** — PySpark's choice, so DDL runs when the
