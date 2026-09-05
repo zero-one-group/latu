@@ -33,7 +33,9 @@ defmodule Latu.Plan do
   @type relation :: Relation.t()
 
   defp expression(form), do: %Expression{form: form}
-  defp relation(form), do: %Relation{form: form}
+  # Public in the real module (`latu_ml` needs the one allocator), so public here: the runner
+  # checks the stand-in exports everything the source does.
+  def relation(form), do: %Relation{form: form}
 
   # --- relations ---------------------------------------------------------------------------
   def new(input), do: {:plan, input}

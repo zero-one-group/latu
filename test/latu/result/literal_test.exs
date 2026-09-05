@@ -3,12 +3,20 @@ defmodule Latu.Result.LiteralTest do
 
   alias Latu.Protocol.Spark.Connect, as: Proto
   alias Latu.Result.Literal
+  alias Latu.Result.UDT
+
+  @vector "org.apache.spark.ml.linalg.VectorUDT"
+  @matrix "org.apache.spark.ml.linalg.MatrixUDT"
 
   # Nested messages are built as plain maps on purpose: the decoder reads fields and never
   # names these types, so a map is the honest shape of what it depends on. Only the literal
   # itself is a real message.
   defp lit(literal_type, extra \\ []) do
     struct!(%Proto.Expression.Literal{literal_type: literal_type}, extra)
+  end
+
+  defp udt_type(class) do
+    %Proto.DataType{kind: {:udt, %Proto.DataType.UDT{type: "udt", jvm_class: class}}}
   end
 
   defp struct_type(names) do
@@ -117,6 +125,69 @@ defmodule Latu.Result.LiteralTest do
     test "a specialized array is a flat list, which PySpark refuses to read at all" do
       array = %{value_type: {:longs, %{values: [1, 2, 3]}}}
       assert {:ok, [1, 2, 3]} = Literal.value(lit({:specialized_array, array}))
+    end
+  end
+
+  # The element layouts are Spark's, from `pyspark/ml/connect/serialize.py`: a Vector is
+  # `[type, size, indices, values]` and a Matrix `[type, numRows, numCols, colPtrs, rowIndices,
+  # values, isTransposed]`, with the sparse-only slots null in a dense one. Latu decodes the
+  # positions and stops; what they mean belongs to whoever knows the class.
+  describe "user-defined types" do
+    test "a dense Vector keeps its class and its four elements, nulls included" do
+      elements = [
+        lit({:byte, 1}),
+        lit({:null, %Proto.DataType{}}),
+        lit({:null, %Proto.DataType{}}),
+        lit({:specialized_array, %{value_type: {:doubles, %{values: [1.0, 2.0]}}}})
+      ]
+
+      literal = lit({:struct, %{elements: elements}}, data_type: udt_type(@vector))
+
+      assert {:ok, %UDT{class: @vector, elements: [1, nil, nil, [1.0, 2.0]]}} =
+               Literal.value(literal)
+    end
+
+    test "a sparse Vector carries the size and indices a dense one leaves null" do
+      elements = [
+        lit({:byte, 0}),
+        lit({:integer, 4}),
+        lit({:specialized_array, %{value_type: {:ints, %{values: [0, 3]}}}}),
+        lit({:specialized_array, %{value_type: {:doubles, %{values: [1.0, 2.0]}}}})
+      ]
+
+      literal = lit({:struct, %{elements: elements}}, data_type: udt_type(@vector))
+
+      assert {:ok, %UDT{elements: [0, 4, [0, 3], [1.0, 2.0]]}} = Literal.value(literal)
+    end
+
+    test "a dense Matrix is seven elements, isTransposed last" do
+      elements = [
+        lit({:byte, 1}),
+        lit({:integer, 2}),
+        lit({:integer, 2}),
+        lit({:null, %Proto.DataType{}}),
+        lit({:null, %Proto.DataType{}}),
+        lit({:specialized_array, %{value_type: {:doubles, %{values: [1.0, 2.0, 3.0, 4.0]}}}}),
+        lit({:boolean, false})
+      ]
+
+      literal = lit({:struct, %{elements: elements}}, data_type: udt_type(@matrix))
+
+      assert {:ok, %UDT{class: @matrix, elements: decoded}} = Literal.value(literal)
+      assert decoded == [1, 2, 2, nil, nil, [1.0, 2.0, 3.0, 4.0], false]
+    end
+
+    test "a UDT falls back to the deprecated struct_type field, as a named struct does" do
+      elements = [lit({:byte, 1})]
+      literal = lit({:struct, %{elements: elements, struct_type: udt_type(@vector)}})
+
+      assert {:ok, %UDT{class: @vector, elements: [1]}} = Literal.value(literal)
+    end
+
+    test "a Python UDT names no JVM class, and decodes anyway" do
+      literal = lit({:struct, %{elements: [lit({:byte, 1})]}}, data_type: udt_type(nil))
+
+      assert {:ok, %UDT{class: nil, elements: [1]}} = Literal.value(literal)
     end
   end
 

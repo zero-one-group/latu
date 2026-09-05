@@ -749,6 +749,14 @@ PySpark still reads only the `array.element_type` / `map.key_type` / `struct.str
 that Spark 4.1 deprecated. Latu reads `data_type` first and falls back, so a literal built the new
 way decodes.
 
+### `Latu.Result.Literal` hands a UDT back as data
+
+**Behaviour.** `_to_value` raises `UNSUPPORTED_LITERAL` on a UDT-typed struct literal, and
+`pyspark.ml` never reaches it — it deserialises the two UDTs it knows from the proto itself.
+Latu has no client-side type model to special-case anything with, so every UDT comes back as a
+`Latu.Result.UDT` — the class, and the elements decoded by position. What they mean belongs to
+whoever knows the class; `latu_ml` is that for `VectorUDT` and `MatrixUDT`.
+
 ### `Latu.conf/2` is `GetOption`
 
 `ConfigRequest.GetOption` — a config value, or nil where Spark has nothing at all. Public

@@ -232,9 +232,11 @@ defmodule Latu.Client do
   Execute a command plan and hand back the finished execution.
 
   A `SqlCommand` answers with `sql_command_result`, which lands on `command_result` — the
-  relation `Latu.sql/3` keeps querying. Commands with nothing to say (writes, views) leave it
-  `nil` and run equally well through `execute/2`; this exists for the ones that answer, and for
-  the metrics an observed write reports. PySpark's `execute_command`.
+  relation `Latu.sql/3` keeps querying. An `MlCommand` answers with `ml_command_result`, latched
+  the same way onto the field of that name and read off the finished struct by `latu_ml`.
+  Commands with nothing to say (writes, views) leave both `nil` and run equally well through
+  `execute/2`; this exists for the ones that answer, and for the metrics an observed write
+  reports. PySpark's `execute_command`.
   """
   @spec execute_command(Session.t(), Proto.Plan.t(), keyword()) ::
           {:ok, Execution.t()} | {:error, Error.t()}

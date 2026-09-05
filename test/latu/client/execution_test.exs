@@ -4,6 +4,7 @@ defmodule Latu.Client.ExecutionTest do
   alias Latu.Client.Execution
   alias Latu.Error
   alias Latu.Protocol.Spark.Connect.ExecutePlanResponse, as: Response
+  alias Latu.Protocol.Spark.Connect.MlCommandResult
   alias Latu.Session
 
   @operation "op-1"
@@ -146,6 +147,25 @@ defmodule Latu.Client.ExecutionTest do
     } do
       assert {:pull, ex} = Execution.step(ex, {:response, command_result(session, nil)})
       assert ex.command_result == nil
+    end
+  end
+
+  # Placeholders where a `Literal` belongs, as the SQL tests use `:a_relation`: what the arm
+  # carries is `latu_ml`'s business, and passing an atom through proves this module never looks.
+  describe "an MlCommand's result" do
+    test "is latched, first one wins", %{session: session, execution: ex} do
+      assert ex.ml_command_result == nil
+
+      assert {:pull, ex} = Execution.step(ex, {:response, ml_result(session, {:param, :a_lit})})
+      assert ex.ml_command_result.result_type == {:param, :a_lit}
+
+      assert {:pull, ex} = Execution.step(ex, {:response, ml_result(session, {:summary, "s"})})
+      assert ex.ml_command_result.result_type == {:param, :a_lit}
+    end
+
+    test "a result with no arm set latches nothing", %{session: session, execution: ex} do
+      assert {:pull, ex} = Execution.step(ex, {:response, ml_result(session, nil)})
+      assert ex.ml_command_result == nil
     end
   end
 
@@ -324,6 +344,13 @@ defmodule Latu.Client.ExecutionTest do
     %Response{
       session_id: session.session_id,
       response_type: {:sql_command_result, %Response.SqlCommandResult{relation: relation}}
+    }
+  end
+
+  defp ml_result(session, result_type) do
+    %Response{
+      session_id: session.session_id,
+      response_type: {:ml_command_result, %MlCommandResult{result_type: result_type}}
     }
   end
 

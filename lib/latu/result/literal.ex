@@ -1,14 +1,18 @@
 defmodule Latu.Result.Literal do
-  @moduledoc false
-  # An `Expression.Literal` the server sent, back into an Elixir term. `Latu.Plan.lit/1` is the
-  # other direction, and the two are deliberately not symmetric: the encoder picks one Spark
-  # type per Elixir type, while this has to read back every arm Spark can produce.
-  #
-  # Transcribed from PySpark's `LiteralExpression._to_value`, with two departures recorded in
-  # docs/deviations.md: Latu decodes `specialized_array`, which PySpark refuses, and Latu reads
-  # the `data_type` field in preference to the `struct_type` field 4.1 deprecated, which PySpark
-  # still reads exclusively.
-  #
+  @moduledoc """
+  A literal the server sent, back into an Elixir term.
+
+  Public because `latu_ml` reads it: an ML attribute — a coefficient, an intercept, a vector —
+  comes back from the server as a literal, not as a frame. `Latu.Plan.lit/1` is the other
+  direction, and the two are deliberately not symmetric: the encoder picks one Spark type per
+  Elixir type, while this has to read back every arm Spark can produce.
+
+  Transcribed from PySpark's `LiteralExpression._to_value`, with three departures recorded in
+  `docs/deviations.md`: Latu decodes `specialized_array`, which PySpark refuses; Latu reads the
+  `data_type` field in preference to the `struct_type` field 4.1 deprecated, which PySpark still
+  reads exclusively; and a UDT comes back as a `Latu.Result.UDT` where PySpark raises.
+  """
+
   # The interval refusals match `Latu.Result.Schema`'s.
   #
   # Clauses below match maps rather than named messages wherever they can, so the offline
@@ -39,7 +43,8 @@ defmodule Latu.Result.Literal do
   **microseconds**; Elixir's `Duration` is the obvious upgrade and waits on someone wanting
   it.
 
-  A struct literal becomes a map with atom keys, as `Latu.collect/2` does for a row.
+  A struct literal becomes a map with atom keys, as `Latu.collect/2` does for a row. A
+  UDT-typed one becomes a `Latu.Result.UDT` instead, since it names a class and not fields.
   """
   @spec value(Proto.Expression.Literal.t() | nil) :: {:ok, term()} | {:error, Error.t()}
   def value(nil), do: {:error, Error.new(:decode, "no literal to decode")}
@@ -101,12 +106,19 @@ defmodule Latu.Result.Literal do
     zip("map", keys, values, fn key, value -> {decode(key), decode(value)} end)
   end
 
-  # The one arm that needs type information: a struct's field *names* are not in the literal.
-  # `data_type` is where 4.1+ puts them, `struct_type` the deprecated field PySpark reads.
+  # The one arm that needs type information: a struct's field *names* are not in the literal,
+  # and a UDT has none to give. `data_type` is where 4.1+ puts the type, `struct_type` the
+  # deprecated field PySpark reads.
   defp decode(%{literal_type: {:struct, struct}} = literal) do
-    case field_names(literal.data_type) || field_names(struct.struct_type) do
-      nil -> raise Error.new(:decode, "the server sent a struct literal with no field names")
-      names -> zip("struct", names, struct.elements, &{String.to_atom(&1), decode(&2)})
+    case struct_shape(literal.data_type) || struct_shape(struct.struct_type) do
+      {:names, names} ->
+        zip("struct", names, struct.elements, &{String.to_atom(&1), decode(&2)})
+
+      {:udt, class} ->
+        %Latu.Result.UDT{class: class, elements: Enum.map(struct.elements, &decode/1)}
+
+      nil ->
+        raise Error.new(:decode, "the server sent a struct literal with no field names")
     end
   end
 
@@ -144,9 +156,12 @@ defmodule Latu.Result.Literal do
           )
   end
 
-  defp field_names(%Proto.DataType{kind: {:struct, %{fields: fields}}}) do
-    Enum.map(fields, & &1.name)
+  # A struct literal's type either names its fields or names a class instead.
+  defp struct_shape(%Proto.DataType{kind: {:struct, %{fields: fields}}}) do
+    {:names, Enum.map(fields, & &1.name)}
   end
 
-  defp field_names(_other), do: nil
+  defp struct_shape(%Proto.DataType{kind: {:udt, %{jvm_class: class}}}), do: {:udt, class}
+
+  defp struct_shape(_other), do: nil
 end

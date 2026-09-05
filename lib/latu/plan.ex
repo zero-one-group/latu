@@ -209,6 +209,18 @@ defmodule Latu.Plan do
   def new(%Proto.Command{} = command), do: %Proto.Plan{op_type: {:command, command}}
 
   @doc """
+  Wrap a `rel_type` arm as a `Relation`, carrying a fresh `plan_id`.
+
+  Public for the same reason `plan_id/0` is: `latu_ml` builds `MlRelation` arms Latu has no verb
+  for, and an id is assigned at creation in one place. A second wrapper out of tree would be a
+  second allocator. See docs/decisions.md on what Latu owes `latu_ml`.
+  """
+  @spec relation({atom(), struct()}) :: relation()
+  def relation(rel_type) do
+    %Proto.Relation{common: %Proto.RelationCommon{plan_id: plan_id()}, rel_type: rel_type}
+  end
+
+  @doc """
   One `id` column of longs. `stop` is exclusive, as in Spark.
 
   `num_partitions` absent leaves the choice to the server:
@@ -1205,10 +1217,6 @@ defmodule Latu.Plan do
     Keyword.get(table, key) ||
       raise ArgumentError,
             "unknown #{what} #{inspect(key)}, expected one of #{inspect(Keyword.keys(table))}"
-  end
-
-  defp relation(rel_type) do
-    %Proto.Relation{common: %Proto.RelationCommon{plan_id: plan_id()}, rel_type: rel_type}
   end
 
   # Hoist the relations an expression referenced, so the server can find them by plan_id.
