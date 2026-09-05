@@ -10,17 +10,17 @@ defmodule Latu.Integration.JoinTest do
   #
   # Columns are keyword lists, never row maps: a map sorts its keys and a positional `schema:`
   # then casts the wrong column to each type, silently.
-  # Needs a Spark Connect server on :15002.
+  # Needs a Spark Connect server on :15003.
   import Latu.Column
 
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     quotes =
       Latu.create_dataframe!(session, [t: [1, 3, 5], price: [10.0, 30.0, 50.0]],

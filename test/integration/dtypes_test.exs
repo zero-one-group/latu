@@ -8,15 +8,15 @@ defmodule Latu.Integration.DtypesTest do
   # The Spark ↔ Explorer type mapping, pinned by measurement rather than by reading — the
   # decode path is Polars' and no fixture can vouch for it. If a row here goes red on a Spark
   # or Explorer upgrade, the mapping moved and Latu.Result.Schema's expectations need a look.
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

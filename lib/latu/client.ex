@@ -60,6 +60,10 @@ defmodule Latu.Client do
   # reads it, and an attribute read before it is set is nil.
   @release_on_disconnect_timeout 5_000
 
+  # How long Gun holds the socket after `disconnect/2` waiting for a close the server never
+  # sends; its default is 15s. docs/decisions.md, "disconnect/2 closes the socket".
+  @closing_timeout 1_000
+
   @doc """
   Close the channel. Idempotent.
 
@@ -1224,7 +1228,8 @@ defmodule Latu.Client do
             initial_connection_window_size: session.window_size,
             initial_stream_window_size: session.window_size,
             keepalive: session.keepalive,
-            keepalive_tolerance: session.keepalive_tolerance
+            keepalive_tolerance: session.keepalive_tolerance,
+            closing_timeout: @closing_timeout
           }
         ]
       ]

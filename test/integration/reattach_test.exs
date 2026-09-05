@@ -54,7 +54,7 @@ defmodule Latu.Integration.ReattachTest do
 
       assert Enum.sum(Enum.map(frames, &Explorer.DataFrame.n_rows/1)) == @over_cap
     after
-      Latu.disconnect(session)
+      Latu.disconnect(session, release: true)
     end
   end
 
@@ -70,7 +70,7 @@ defmodule Latu.Integration.ReattachTest do
       small = Plan.new(Latu.range(session, 5).plan)
       assert {:ok, [_ | _], _executed} = Client.execute(session, small)
     after
-      Latu.disconnect(session)
+      Latu.disconnect(session, release: true)
     end
   end
 
@@ -80,7 +80,7 @@ defmodule Latu.Integration.ReattachTest do
     try do
       Client.execute(session, Plan.new(Latu.range(session, count).plan))
     after
-      Latu.disconnect(session)
+      Latu.disconnect(session, release: true)
     end
   end
 

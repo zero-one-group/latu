@@ -10,7 +10,7 @@ defmodule Latu.Integration.StatTest do
   # `when(isnull(col(c)), lit(0.0))` before aggregating. The contrast test below pins it against
   # `F.covar_samp`, which drops those rows and gives a different answer on the same data.
   #
-  # Needs a Spark Connect server on :15002 and the fixtures generated — `mix fixtures`.
+  # Needs a Spark Connect server on :15003 and the fixtures generated — `mix fixtures`.
   import Latu.Column
 
   alias Latu.Functions, as: F
@@ -18,11 +18,11 @@ defmodule Latu.Integration.StatTest do
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     df = Latu.read(session, format: "parquet", path: "/fixtures/measurements.parquet")
 

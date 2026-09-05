@@ -186,8 +186,6 @@ defmodule Latu.MixProject do
         "compile",
         "test --warnings-as-errors"
       ],
-      # `--max-cases 4` matches the dev server's one task slot; `docs/decisions.md`.
-      #
       # `mix docs` is spawned through `env` because this alias resolves under `:test` (the
       # `preferred_envs` above) and `ex_doc` is `only: :dev` — a bare "docs" cannot run here,
       # and a `Mix.env()` test around it is always false. `mix cmd` runs its arguments through
@@ -195,7 +193,7 @@ defmodule Latu.MixProject do
       "check.all": [
         "format --check-formatted",
         "compile",
-        "test --include integration --warnings-as-errors --max-cases 4",
+        "test --include integration --warnings-as-errors",
         "cmd env MIX_ENV=dev mix docs"
       ]
     ]

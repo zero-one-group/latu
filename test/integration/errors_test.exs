@@ -1,7 +1,7 @@
 defmodule Latu.Integration.ErrorsTest do
   use ExUnit.Case, async: true
 
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   #
   # What is a question rather than a smoke test:
   #
@@ -14,11 +14,11 @@ defmodule Latu.Integration.ErrorsTest do
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     %{session: session}
   end

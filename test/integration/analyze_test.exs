@@ -9,15 +9,15 @@ defmodule Latu.Integration.AnalyzeTest do
   # The schema arms, and the one thing no fixture can vouch for: that Latu names a type the
   # way Spark does. `typeof` is the server's own answer, so it is the oracle for
   # Latu.Result.Schema.simple_string/1 rather than a second opinion written by hand.
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 
@@ -224,7 +224,7 @@ defmodule Latu.Integration.AnalyzeTest do
 
     test "two sessions are refused before the server sees it", %{session: session} do
       other = Latu.connect!(@url)
-      on_exit(fn -> Latu.disconnect(other) end)
+      on_exit(fn -> Latu.disconnect(other, release: true) end)
 
       assert_raise ArgumentError, ~r/session/, fn ->
         Latu.same_semantics(Latu.range(session, 5), Latu.range(other, 5))

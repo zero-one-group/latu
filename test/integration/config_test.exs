@@ -4,7 +4,7 @@ defmodule Latu.Integration.ConfigTest do
   alias Latu.Error
   alias Latu.Functions, as: F
 
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   #
   # The three read arms differ in a way no proto comment says (SparkConnectConfigHandler,
   # RuntimeConfig, SQLConf):
@@ -22,7 +22,7 @@ defmodule Latu.Integration.ConfigTest do
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   # Registered, so Spark has a default for it, and nothing in docker-compose.yml sets it — which
   # is exactly the state that tells the three read arms apart. A bytes conf, so a default of
@@ -31,7 +31,7 @@ defmodule Latu.Integration.ConfigTest do
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 
