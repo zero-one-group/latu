@@ -9,7 +9,7 @@ defmodule Latu.Integration.HigherOrderTest do
   alias Latu.Plan
   alias Latu.Result
 
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   # Run with: mix test --include integration
   #
   # A golden test proves the lambda encodes the way PySpark encodes it. Only a server proves
@@ -19,8 +19,8 @@ defmodule Latu.Integration.HigherOrderTest do
   @moduletag :capture_log
 
   setup do
-    session = Latu.connect!("sc://localhost:15002")
-    on_exit(fn -> Latu.disconnect(session) end)
+    session = Latu.connect!("sc://localhost:15003")
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

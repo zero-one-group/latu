@@ -10,7 +10,7 @@ defmodule Latu.Integration.WindowTest do
   alias Latu.Result
   alias Latu.Window, as: W
 
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   # Run with: mix test --include integration
   #
   # A golden test proves Latu's plan matches PySpark's bytes. It cannot prove Spark *accepts*
@@ -20,8 +20,8 @@ defmodule Latu.Integration.WindowTest do
   @moduletag :capture_log
 
   setup do
-    session = Latu.connect!("sc://localhost:15002")
-    on_exit(fn -> Latu.disconnect(session) end)
+    session = Latu.connect!("sc://localhost:15003")
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

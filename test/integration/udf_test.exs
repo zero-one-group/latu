@@ -5,7 +5,7 @@ defmodule Latu.Integration.UdfTest do
 
   alias Latu.Error
 
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   #
   # Latu's half of "call a user-defined function" is an `UnresolvedFunction` carrying a name.
   # The analyzer resolves it out of the session's function registry, which does not record what
@@ -17,11 +17,11 @@ defmodule Latu.Integration.UdfTest do
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

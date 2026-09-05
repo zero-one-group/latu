@@ -36,7 +36,7 @@ defmodule Latu.Integration.TelemetryTest do
     # The server has no auth interceptor, so it is ignored — the point is that Latu carries it
     # and telemetry must not.
     session = Latu.connect!("sc://localhost:15002/;token=#{@token}")
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     %{session: session}
   end

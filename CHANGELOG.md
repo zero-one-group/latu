@@ -3,6 +3,12 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## Unreleased
+
+**`Latu.disconnect/2` closes the socket within a second.** Gun waited its default 15 s for a
+close the Spark server never sends, so a client that connects per unit of work leaked sockets
+for 15 s each — enough to hit an open-files limit at a few connections a second. No migration.
+
 ## 0.2.0 — 2026-09-05
 
 The seam the companion ML package builds on. Everything here is additive; no migration.

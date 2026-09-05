@@ -14,15 +14,15 @@ defmodule Latu.Integration.ReshapeTest do
   #   * `transpose/2` is a Spark 4 addition and needs every non-index column to share a type.
   #     Its rules are not written down anywhere Latu can read.
   #
-  # Needs a Spark Connect server on :15002.
+  # Needs a Spark Connect server on :15003.
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

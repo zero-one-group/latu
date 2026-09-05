@@ -7,17 +7,33 @@ to make PySpark print the protobuf plans Latu must produce.
 
 `docker-compose.yml` has two profiles, both on `apache/spark:4.2.0`.
 
-`spark-connect` (:15002, UI :4040) is the normal server. `spark-reattach` (:15003, UI :4041)
-sets `senderMaxStreamDuration=5s` and `senderMaxStreamSize=1m`, so the server ends every
-ExecutePlan stream early *without* a `ResultComplete` and any real query exercises the
-`ReattachExecute` path. The integration suite needs both — reattach bugs are invisible
-otherwise, and they corrupt results rather than raising.
+`spark-connect` (:15002, UI :4040) runs `local[1]` with a checkpoint dir and a 100 ms progress
+interval. `spark-reattach` (:15003, UI :4041) runs `local[*]` and sets
+`senderMaxStreamDuration=5s` and `senderMaxStreamSize=1m`, so the server ends every ExecutePlan
+stream early *without* a `ResultComplete` and any real query exercises the `ReattachExecute`
+path. Integration modules that only read run against :15003 — every result past 1 MB reattaches,
+and the suite's server-bound work is spread over two task slots. A module that writes,
+checkpoints, ships artifacts or needs one of :15002's confs stays there: concurrent write tasks
+are the write-stall pattern (`docs/decisions.md`). The suite needs both — reattach bugs are
+invisible otherwise, and they corrupt results rather than raising.
 
 Two things about that file: `--packages org.apache.spark:spark-connect_2.13:...` is **not**
 needed (the Connect server ships in the Spark 4.x assembly), and
 `spark.connect.grpc.binding.address=0.0.0.0` is essential, or the server binds loopback inside
 the container and the published port is dead. A conf change needs
 `docker compose up -d --force-recreate`, for both containers.
+
+**Check the image matches your CPU**: `docker exec latu-spark-connect uname -m` must print your
+host's architecture (`aarch64` on Apple silicon). The image is published for both, but an
+`x86_64` JVM on an arm64 Mac runs under Rosetta — several times slower for JIT-heavy work, and
+the likeliest cause when the suite is slower on the laptop than in CI. Fix:
+`docker compose down && docker rmi apache/spark:4.2.0 && docker compose pull`, with no
+`DOCKER_DEFAULT_PLATFORM` in your environment.
+
+Integration tests release their sessions on the way out, `disconnect/2` with `release: true`:
+a session the client merely disconnects lives on the server for `defaultSessionTimeout`
+(60 min) with its plan cache and generated classes, and a long-lived dev container accumulates
+a run's worth per run.
 
 ## One-time setup
 

@@ -25,7 +25,7 @@ defmodule Latu.Integration.MergeTest do
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     %{session: session}
   end

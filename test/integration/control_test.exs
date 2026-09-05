@@ -32,7 +32,7 @@ defmodule Latu.Integration.ControlTest do
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     # Make the session real on the server. See the note above.
     Latu.count!(Latu.range(session, 1))
@@ -43,7 +43,7 @@ defmodule Latu.Integration.ControlTest do
   describe "a session the server has never seen" do
     setup do
       fresh = Latu.connect!(@url)
-      on_exit(fn -> Latu.disconnect(fresh) end)
+      on_exit(fn -> Latu.disconnect(fresh, release: true) end)
 
       %{fresh: fresh}
     end
@@ -272,7 +272,7 @@ defmodule Latu.Integration.ControlTest do
   # the session belongs to the parent — which is what disconnect/2 does by default.
   defp worker(%{session_id: id}, tag) do
     worker = Latu.connect!(@url, session_id: id, tags: [tag])
-    on_exit(fn -> Latu.disconnect(worker) end)
+    on_exit(fn -> Latu.disconnect(worker, release: true) end)
 
     worker
   end

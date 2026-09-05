@@ -6,7 +6,7 @@ defmodule Latu.Integration.ShowTest do
 
   alias Latu.Error
 
-  # Needs a Spark Connect server on :15002 — docker compose up -d spark-connect.
+  # Needs a Spark Connect server on :15003 — docker compose up -d spark-reattach.
   @moduletag :integration
   @moduletag :capture_log
 
@@ -25,8 +25,8 @@ defmodule Latu.Integration.ShowTest do
   """
 
   setup do
-    session = Latu.connect!("sc://localhost:15002")
-    on_exit(fn -> Latu.disconnect(session) end)
+    session = Latu.connect!("sc://localhost:15003")
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

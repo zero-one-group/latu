@@ -136,6 +136,10 @@ No Dialyzer: Elixir's own type checking covers most of its ground with better me
 **Never `head` a grep you are using to decide something is finished.** A grep that answers "is
 that all of them?" gets `| cat`, or a count first — truncation and no-matches look identical.
 
+**Never time the suite with `--slowest` or `--slowest-modules`.** Both set `--trace`, and trace
+forces `--max-cases 1` whatever the command line says — the run is serial and the module times
+add up to the wall. Time with `mix check.all`, and read per-module times from a separate run.
+
 **`mix docs` runs with `warnings_as_errors` and is part of the release gate.** Its exemptions
 are named in `mix.exs` with reasons; a new warning is a real reference to fix, not a line to add
 to the list.

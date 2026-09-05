@@ -5,17 +5,17 @@ defmodule Latu.Integration.NaTest do
   # number does nothing at all, quietly. Reads fixtures/measurements.parquet, whose row shape is
   # documented in dev/make_data_fixtures.py: non-null counts of 4, 4, 4, 3, 3, 2, 3, 0.
   #
-  # Needs a Spark Connect server on :15002 and the fixtures generated — `mix fixtures`.
+  # Needs a Spark Connect server on :15003 and the fixtures generated — `mix fixtures`.
   import Latu.Column
 
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     df = Latu.read(session, format: "parquet", path: "/fixtures/measurements.parquet")
 

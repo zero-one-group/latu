@@ -15,7 +15,7 @@ defmodule Latu.Integration.WriteTest do
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 
@@ -91,7 +91,7 @@ defmodule Latu.Integration.WriteTest do
     on_exit(fn ->
       session = Latu.connect!(@url)
       Latu.Catalog.drop_table(session, table, if_exists: true)
-      Latu.disconnect(session)
+      Latu.disconnect(session, release: true)
     end)
 
     table

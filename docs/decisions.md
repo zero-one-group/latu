@@ -483,6 +483,9 @@ fix: `guides_test.exs` earns its 180 s by doing fourteen round trips in one test
 six-row `join_as_of` that waits 60 s is queueing, and a bigger budget would also have hidden the
 reattach deadlock ML1 has to rule out.
 
+Reversed the same day, once the servers ran natively: "`--max-cases` is ExUnit's default again",
+below.
+
 ## 2026-09-01 — M8.3: sql is a Command, views are one verb, the catalog is a table of relations
 
 **`Latu.sql/3` sends `Command.sql_command`, eagerly** — PySpark's choice, so DDL runs when the
@@ -1185,3 +1188,53 @@ the one extra that renders in three places — GitHub, hexdocs, hex.pm — and o
 `hexdocs.pm/latu/<page>.html` URL works in all three; the other extras render on hexdocs alone
 and keep relative links, which `docs_test.exs` checks (it skips absolute ones). The hex.pm README
 is frozen per version, hence 0.1.1 with no code change.
+
+## 2026-09-05 — `disconnect/2` closes the socket within a second
+
+`GRPC.Stub.disconnect/1` ends with `:gun.shutdown/1`, which sends GOAWAY and then waits
+`closing_timeout` — 15 s by default — for the peer to close the connection. A grpc-java server
+never closes on a client's GOAWAY, so every `disconnect/2` held its socket, and its Gun process,
+for the full 15 s. Found when the suite reached ~7 tests/s on a native arm64 server: over a
+hundred sockets in `closing` at any moment took the BEAM past macOS's default 256 open files,
+and the failure surfaced as `emfile` inside `code_server` loading a module lazily — an
+`UndefinedFunctionError` out of protobuf's encoder, nowhere near the cause.
+
+Latu sets `closing_timeout: 1_000` in Gun's `http2_opts`. Nothing is in flight when
+`disconnect/2` runs — the caller holds every stream, and the contract is that they are done —
+so the client-initiated case has nothing to wait for. The same timeout bounds how long in-flight
+streams get to drain after a *server's* GOAWAY, and a second is short; a server that sent one is
+going down, and the reattach path reports what the client did not receive. Not pinned by a test:
+the socket count is VM-global and the suite is concurrent, so the gate is the suite itself
+running under the default file limit.
+
+## 2026-09-05 — The integration suite spreads over both servers and releases its sessions
+
+**Modules that only read run against `spark-reattach` (:15003).** Design §11.4 always named the
+reattach profile as the integration default and the tests never did it: 27 of 32 modules hit
+`:15002`. Now every result past 1 MB takes the reattach path and the suite's work is spread over
+two task slots. Anything that writes, checkpoints, ships artifacts or needs one of `:15002`'s
+confs stays there — concurrent write tasks are the write-stall pattern. Assignment is a literal
+`@url` per module, as before; a table earns its place only if a third server ever does.
+
+**Tests disconnect with `release: true`.** A session the client merely disconnects lives on the
+server for `defaultSessionTimeout` (60 min) with its plan cache and the generated classes that
+cache pins. Measured on fresh containers: one run added 0.8 GiB and ~330 threads to
+`spark-connect`, 1.4 GiB and ~240 to `spark-reattach`, and a container that lives for days had
+reached 4 GiB on a 1 GB heap. The library default stays `release: false` (the earlier retreat);
+the tests opt in, `write_test`'s drop helper included.
+
+**What the 72.5 → 12.1 s actually was.** Neither `--max-cases` (1, 4, 20) nor a second server
+moved the wall, because both JVMs were running under Rosetta —
+`DOCKER_DEFAULT_PLATFORM=linux/amd64` in the maintainer's shell, `x86_64` inside the container
+on an arm64 Mac (`dev/README.md` has the check) — and, once native, `disconnect/2` held every
+socket 15 s (entry above). CI on four native vCPUs had been faster than the ten-core laptop the
+whole time; that asymmetry is the tell.
+
+## 2026-09-05 — `--max-cases` is ExUnit's default again
+
+Measured on native servers: 12.1 s at `--max-cases 4`, 10.1 s at 8, 9.4 s at the default
+(`schedulers_online * 2` — 20 on the laptop, 8 in CI). The queueing that earned the cap — a
+six-row test waiting 60 s behind nineteen others — was the emulated JVM ("spreads over both
+servers", above); with the whole suite under ten seconds no test can approach ExUnit's 60 s wall
+by waiting, and a cap that costs 30 % is a cap without a reason. `mix check.all` passes no
+`--max-cases`.

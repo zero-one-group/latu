@@ -3,18 +3,18 @@ defmodule Latu.Integration.ReadTest do
 
   alias Latu.Functions, as: F
 
-  # Needs a Spark Connect server on :15002 and the data fixtures the containers mount at
+  # Needs a Spark Connect server on :15003 and the data fixtures the containers mount at
   # /fixtures — `mix fixtures`.
   @moduletag :integration
   @moduletag :capture_log
 
-  @url "sc://localhost:15002"
+  @url "sc://localhost:15003"
 
   @people [%{id: 1, name: "Ada"}, %{id: 2, name: "Grace"}, %{id: 3, name: "Linus"}]
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
   end
 

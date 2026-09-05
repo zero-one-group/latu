@@ -24,7 +24,7 @@ defmodule Latu.Integration.ObserveTest do
 
   setup do
     session = Latu.connect!(@url)
-    on_exit(fn -> Latu.disconnect(session) end)
+    on_exit(fn -> Latu.disconnect(session, release: true) end)
 
     df = Latu.read(session, format: "parquet", path: "/fixtures/measurements.parquet")
 
