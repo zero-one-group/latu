@@ -189,7 +189,8 @@ defmodule Latu.MixProject do
       "check.all": [
         "format --check-formatted",
         "compile",
-        "test --include integration --warnings-as-errors --max-cases 4"
+        "test --include integration --warnings-as-errors --max-cases 4",
+        "docs"
       ]
     ]
   end

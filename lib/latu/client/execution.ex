@@ -34,6 +34,7 @@ defmodule Latu.Client.Execution do
     :last_response_id,
     :schema,
     :command_result,
+    :ml_command_result,
     :checkpointed,
     :metrics,
     :progress,
@@ -65,6 +66,7 @@ defmodule Latu.Client.Execution do
           last_response_id: String.t() | nil,
           schema: Proto.DataType.t() | nil,
           command_result: Proto.Relation.t() | nil,
+          ml_command_result: Proto.MlCommandResult.t() | nil,
           checkpointed: String.t() | nil,
           metrics: Proto.ExecutePlanResponse.Metrics.t() | nil,
           progress: Proto.ExecutePlanResponse.ExecutionProgress.t() | nil,
@@ -297,6 +299,15 @@ defmodule Latu.Client.Execution do
   defp take(%__MODULE__{command_result: nil} = execution, {:sql_command_result, result})
        when not is_nil(result.relation) do
     {:pull, %{execution | command_result: result.relation}}
+  end
+
+  # An MlCommand answers with a fitted model's handle, one fetched attribute, or a summary.
+  # Latched like the SQL result, and for the same reason. The whole message rather than one
+  # field, because which arm is set is the answer; opaque cargo either way, since this module
+  # must not know what an `operator_info` means. `latu_ml` is what interprets it.
+  defp take(%__MODULE__{ml_command_result: nil} = execution, {:ml_command_result, result})
+       when not is_nil(result.result_type) do
+    {:pull, %{execution | ml_command_result: result}}
   end
 
   # `schema`, `metrics` and `observed_metrics` sit outside the `response_type` oneof and are
