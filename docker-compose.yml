@@ -8,8 +8,8 @@ services:
     entrypoint: ["/opt/spark/sbin/start-connect-server.sh"]
     command:
       - "--wait"
-      # Docker Desktop/macOS: local[4] intermittently causes ~60s
-      # server-side Spark write stalls; local[1] is stable.
+      # One task slot: the suite is hundreds of tiny queries, and ten tasks each cost more than
+      # they save. Measured; docs/decisions.md "keep whole-stage codegen and local[1]".
       - "--master"
       - "local[1]"
       - "--conf"

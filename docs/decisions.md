@@ -466,6 +466,9 @@ results after a shuffle. Consequence: pre-shuffle results arrive as one batch; t
 "assert totals, never batch counts" makes that a non-event. `dev/probe_writes.{exs,py}` stay
 checked in for if it reappears.
 
+Re-measured on native servers 2026-09-05: `local[1]` stays, for a different reason — "keep
+whole-stage codegen and `local[1]`", below.
+
 ## 2026-09-05 — `mix check.all` runs `--max-cases 4`, because the dev server has one task slot
 
 `--master local[1]` (the write-stall verdict above) means one task slot, and 27 of the 32
@@ -1238,3 +1241,14 @@ six-row test waiting 60 s behind nineteen others — was the emulated JVM ("spre
 servers", above); with the whole suite under ten seconds no test can approach ExUnit's 60 s wall
 by waiting, and a cap that costs 30 % is a cap without a reason. `mix check.all` passes no
 `--max-cases`.
+
+## 2026-09-05 — The test servers keep whole-stage codegen and `local[1]`
+
+Two fixture changes measured on native servers, warm JVMs, against 11 s for the suite. Codegen
+off (`spark.sql.codegen.wholeStage=false` with `spark.sql.codegen.factoryMode=NO_CODEGEN`, to
+spare a Janino compile per novel plan): ~60 s. The suite deliberately runs large ranges —
+`range(500_000_000)` in the control and progress tests, 200,000 rows past the 1 MB cap in the
+reattach tests — and interpreted, those dominate everything the compiles cost. `spark-connect`
+at `local[*]`: 12.6 s. Hundreds of four-row queries each pay ten tasks and ten Arrow batches for
+work one task finishes first. The write stall that originally chose `local[1]` was measured
+under emulation and did not reappear; the slot count is kept on this measurement instead.
