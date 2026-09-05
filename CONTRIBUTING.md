@@ -105,25 +105,14 @@ is in `docs/decisions.md`.
 - [ ] `CHANGELOG.md`'s top entry is the new version and date, migration in one line
 - [ ] `@version` in `mix.exs` matches it
 - [ ] the README's install snippet names the new minor
-  - `~> 0.1` still *installs* 0.2.0, so nothing breaks and nothing 404s — but a minor may rename
-    or remove before 1.0, so the loose constraint floats a user across the next one; and the
-    README is frozen per version on hex.pm, so a stale snippet stays on that page for good
-- [ ] `docs/decisions.md` carries every decision this version made; a reversed one is a new entry
-  plus one line on the old
 - [ ] `mix check.all` green, both compose profiles up
-  - `DOCKER_DEFAULT_PLATFORM` unset: an emulated JVM runs several times slower and reads as
-    flaky tests rather than as a slow machine (`dev/README.md`)
 - [ ] `git rev-parse main origin/main` match
 
 **Release**
 
 - [ ] `mix hex.build`, and read the file list it prints
-  - `priv/function_docs.exs` and `priv/function_groups.exs` must be in it: the compile refuses
-    without them, so a consumer's `deps.get` fails on something you cannot reproduce locally
 - [ ] working tree clean — `mix hex.publish` builds the docs from the tree, not from the tarball
 - [ ] `git tag v<version>` and `git push origin v<version>`, **before** publishing
-  - `source_ref` follows `@version`, so every "view source" link on hexdocs points at that tag;
-    publish first and all of them 404 until it lands
 - [ ] `mix hex.publish`
 
 **Within the hour**
@@ -137,5 +126,3 @@ cache and go on showing the previous release for a while.
 - [ ] `latu.hexdocs.pm/<version>/readme.html`
 - [ ] a "view source" link on hexdocs lands at `v<version>`
 - [ ] every README link works **on hex.pm**, not only on GitHub
-  - the README is frozen per version there and the tarball carries no guides, so a relative link
-    404s; 0.1.1 exists for exactly this
