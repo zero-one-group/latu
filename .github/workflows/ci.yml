@@ -16,8 +16,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# No MIX_ENV: `mix check.all` sets its own (mix.exs `preferred_envs`) needs dev,
-# where ex_doc lives. Each step runs in the env it would locally.
+# No MIX_ENV: `mix check.all` sets its own (mix.exs `preferred_envs`), and the `mix docs` it
+# ends with re-enters dev, where ex_doc lives. Each step runs in the env it would locally.
 
 jobs:
   ci:
