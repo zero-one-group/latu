@@ -89,3 +89,40 @@ vendored Spark 4.2.0 protos in `priv/proto/`. Do not edit them by hand:
 ```bash
 mix proto.generate
 ```
+
+## Release checklist
+
+Maintainer only. The nested notes are the traps each step exists for; the reasoning behind them
+is in `docs/decisions.md`.
+
+**Before the release commit**
+
+- [ ] every branch belonging in this version is merged to `main`
+  - a branch touching `lib/` is a release change however it is named:
+    `git diff --stat main..<branch> -- lib/`
+- [ ] no `## Unreleased` section left in `CHANGELOG.md` — fold it into this version's entry while
+  the version is still unpublished
+- [ ] `CHANGELOG.md`'s top entry is the new version and date, migration in one line
+- [ ] `@version` in `mix.exs` matches it
+- [ ] the README's install snippet names the new minor
+- [ ] `mix check.all` green, both compose profiles up
+- [ ] `git rev-parse main origin/main` match
+
+**Release**
+
+- [ ] `mix hex.build`, and read the file list it prints
+- [ ] working tree clean — `mix hex.publish` builds the docs from the tree, not from the tarball
+- [ ] `git tag v<version>` and `git push origin v<version>`, **before** publishing
+- [ ] `mix hex.publish`
+
+**Within the hour**
+
+`mix hex.publish --revert <version>` works for one hour on a version that is not the package's
+first; after that, retire only. Check the versioned URLs — the unversioned pages sit behind a CDN
+cache and go on showing the previous release for a while.
+
+- [ ] `hex.pm/packages/latu/<version>` renders
+- [ ] `readme.hex.pm/latu/<version>`
+- [ ] `latu.hexdocs.pm/<version>/readme.html`
+- [ ] a "view source" link on hexdocs lands at `v<version>`
+- [ ] every README link works **on hex.pm**, not only on GitHub
