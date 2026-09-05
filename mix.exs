@@ -87,21 +87,21 @@ defmodule Latu.MixProject do
         String.starts_with?(term, "Latu.Protocol.") or
           String.starts_with?(term, "Latu.Client") or
           String.starts_with?(term, "Latu.Plan.Inspect") or
-          String.starts_with?(term, "Latu.Result.Literal") or
           String.starts_with?(term, "Latu.Functions.Registry") or
           term == "Latu.Session.pin/2"
       end,
-      # `Latu.Plan`'s types *are* the protocol's — `@type relation :: Proto.Relation.t()` — and
-      # `Latu.Result.decode/2` takes `[Latu.Client.batch()]`. Both name modules that are
-      # `@moduledoc false` on purpose, so ExDoc has no page to link and says so once per spec.
+      # `Latu.Plan`'s types *are* the protocol's — `@type relation :: Proto.Relation.t()`,
+      # `Latu.Result.decode/2` takes `[Latu.Client.batch()]`, and `Latu.Result.Literal.value/1`
+      # takes the protocol's own `Literal`. All three name modules that are `@moduledoc false`
+      # on purpose, so ExDoc has no page to link and says so once per spec.
       #
-      # What this costs, stated plainly: an undefined *type* in a spec on these two modules
+      # What this costs, stated plainly: an undefined *type* in a spec on these three modules
       # would not be reported here. Two other checks cover it — the compiler, since `mix.exs`
       # sets `warnings_as_errors` for `lib/` and an unknown type in a `@spec` is a compile
       # warning; and `test/latu/examples_test.exs`, which resolves every `Mod.fun/arity` in
-      # every docstring against real exports, including these two modules' prose.
+      # every docstring against real exports, including these three modules' prose.
       skip_undefined_reference_warnings_on: fn id ->
-        id in ["Latu.Plan", "Latu.Result"]
+        id in ["Latu.Plan", "Latu.Result", "Latu.Result.Literal"]
       end,
       warnings_as_errors: true,
       groups_for_modules: [
@@ -112,6 +112,8 @@ defmodule Latu.MixProject do
         # impl for `Latu.DataFrame` behind an optional dep, and nothing else.
         "Results and observability": [
           Latu.Result,
+          Latu.Result.Literal,
+          Latu.Result.UDT,
           Latu.Error,
           Latu.ExecutionInfo,
           Latu.Progress,
