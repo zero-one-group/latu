@@ -10,8 +10,14 @@
 # transient, and a before/after reading misses every one of them.
 #
 # Explorer's frames live in Rust and are invisible to `:erlang.memory/0` (design §9.1), so RSS
-# is the only measure that sees them — and RSS never falls back, so read the *deltas* down a
-# column, not the absolutes. Run it on an otherwise idle machine.
+# is the only measure that sees them — so both the delta and the absolute peak are reported, and
+# neither is trustworthy alone: RSS never falls back, so a delta after a large step reads near
+# zero. Run it on an otherwise idle machine.
+#
+# The 100 MB row can OOM the compose server: `local[1]` takes Spark's default 1 g driver heap
+# (confirmed by `mlCache.memoryControl.maxInMemorySize` reporting 256 MB, which is heap/4), and
+# collecting 100 MB through `DirectTaskResult` serialisation does not fit. A failed row reports
+# and the table continues. Give the driver more heap in docker-compose.yml if 100 MB matters.
 
 defmodule ProbeCopies do
   @sample_ms 5
@@ -22,11 +28,28 @@ defmodule ProbeCopies do
 
     base = reading()
     sampler = spawn_sampler(self())
-    {us, result} = :timer.tc(fun)
+
+    {us, result} =
+      :timer.tc(fn ->
+        try do
+          {:ok, fun.()}
+        rescue
+          error -> {:failed, Exception.message(error)}
+        end
+      end)
+
     peak = stop_sampler(sampler)
 
-    report(label, div(us, 1000), base, peak)
-    result
+    case result do
+      {:ok, value} ->
+        report(label, div(us, 1000), base, peak)
+        value
+
+      {:failed, message} ->
+        reason = String.slice(message, 0, 88)
+        IO.puts("  " <> String.pad_trailing(label, 40) <> "FAILED — " <> reason)
+        nil
+    end
   end
 
   defp report(label, ms, base, peak) do
@@ -36,7 +59,8 @@ defmodule ProbeCopies do
         String.pad_leading("#{ms} ms", 10) <>
         String.pad_leading(mb(peak.binary - base.binary), 14) <>
         String.pad_leading(mb(peak.total - base.total), 12) <>
-        String.pad_leading(mb(peak.rss - base.rss), 12)
+        String.pad_leading(mb(peak.rss - base.rss), 12) <>
+        String.pad_leading(mb(peak.rss), 12)
     )
   end
 
@@ -47,7 +71,8 @@ defmodule ProbeCopies do
         String.pad_leading("wall", 10) <>
         String.pad_leading("peak binary", 14) <>
         String.pad_leading("peak BEAM", 12) <>
-        String.pad_leading("peak RSS", 12)
+        String.pad_leading("d RSS", 12) <>
+        String.pad_leading("RSS abs", 12)
     )
   end
 
@@ -104,6 +129,11 @@ nx? = Code.ensure_loaded?(Nx)
 
 IO.puts("Spark #{Latu.spark_version!(session)} — the cost of bringing a sample down")
 
+# The first query of a run carries JVM warm-up and planning, which lands entirely on whatever
+# row is measured first. Spend it here instead.
+{:ok, _warm} =
+  session |> Latu.range(50_000) |> Latu.select(a: expr("cast(id as double)")) |> Latu.to_arrow()
+
 unless nx? do
   IO.puts("""
 
@@ -139,15 +169,26 @@ for mb <- [10, 50, 100] do
   frame = ProbeCopies.measure("to_explorer", fn -> Latu.to_explorer!(df) end)
 
   if nx? do
-    # The second half, per column — what `to_nx/2` replaces with a slice and a reshape.
-    ProbeCopies.measure("to_explorer |> to_tensor (3 cols)", fn ->
+    # The second half alone, over the frame already built above.
+    ProbeCopies.measure("  |> to_tensor (3 cols)", fn ->
       for name <- ["a", "b", "c"] do
         frame |> Explorer.DataFrame.pull(name) |> Explorer.Series.to_tensor()
       end
     end)
+
+    # And both halves as one span — the roadmap's "holds it three times over at peak" is a
+    # claim about this row, not about the two above it. Nothing here is kept, so the frame and
+    # the tensors are only alive together if the route really does hold them together.
+    ProbeCopies.measure("to_explorer |> to_tensor, one span", fn ->
+      fresh = Latu.to_explorer!(df)
+
+      for name <- ["a", "b", "c"] do
+        fresh |> Explorer.DataFrame.pull(name) |> Explorer.Series.to_tensor()
+      end
+    end)
   end
 
-  # Held for comparison only while the tensors are built above; released here.
+  # Held only so the per-column row above has something to read; released here.
   _ = frame
 end
 

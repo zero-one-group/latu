@@ -170,7 +170,8 @@ defmodule Latu.MixProject do
       {:protobuf, "~> 0.17"},
       {:telemetry, "~> 1.0"},
       # 0.36 is the floor: `:default_group_for_doc` and `:group` doc metadata land there.
-      {:ex_doc, "~> 0.36", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.36", only: :dev, runtime: false},
+      {:nx, "~> 0.13", only: :dev}
     ]
   end
 

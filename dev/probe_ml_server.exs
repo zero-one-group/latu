@@ -108,68 +108,130 @@ missing =
 ProbeMl.say("Fetch on a missing ref", ProbeMl.describe(ProbeMl.send(session, missing)))
 
 # =============================================
-# 3. The first Fit Latu ever sends
+# 3. A features column, and the first Fit Latu ever sends
 # =============================================
 
-ProbeMl.heading("3. Fit LogisticRegression on four rows (proves the M15.1 latch)")
+ProbeMl.heading("3. The ML SQL functions, VectorAssembler, and Fit")
 
-# Also answers whether `array_to_vector` is reachable as a plain SQL function, which is what
-# roadmap §3.2 assumes for `Latu.ML.Functions`.
-sql = """
-SELECT label, array_to_vector(xs) AS features FROM VALUES
-  (0.0, array(0.0, 1.1)), (0.0, array(0.1, 1.0)),
-  (1.0, array(2.0, 0.1)), (1.0, array(2.1, 0.2)) AS t(label, xs)
-"""
+# Roadmap §1 has these two in scope as plain Spark functions, which is what `Latu.ML.Functions`
+# would be built on. Anything but UNRESOLVED_ROUTINE means the name resolves.
+for name <- ~w(array_to_vector vector_to_array) do
+  answer =
+    case Latu.sql(session, "SELECT #{name}(array(1.0, 2.0)) AS v") do
+      {:ok, df} ->
+        case Latu.collect(df) do
+          {:ok, _rows} -> "resolves, and evaluates"
+          {:error, error} -> "resolves; " <> inspect(error.error_class)
+        end
 
-case Latu.sql(session, sql) do
-  {:error, error} ->
-    ProbeMl.say("array_to_vector as SQL", "REFUSED — " <> String.slice(error.message, 0, 100))
-
-  {:ok, training} ->
-    ProbeMl.say("array_to_vector as SQL", "ok — #{inspect(Latu.dtypes!(training))}")
-
-    fit =
-      {:fit,
-       %Proto.MlCommand.Fit{
-         estimator: %Proto.MlOperator{
-           name: "org.apache.spark.ml.classification.LogisticRegression",
-           uid: "latu_probe_lr",
-           type: :OPERATOR_TYPE_ESTIMATOR
-         },
-         params: %Proto.MlParams{
-           params: %{"maxIter" => %Proto.Expression.Literal{literal_type: {:integer, 1}}}
-         },
-         dataset: training.plan
-       }}
-
-    result = ProbeMl.send(session, fit)
-    ProbeMl.say("Fit", ProbeMl.describe(result))
-
-    with {:ok, %{ml_command_result: %{result_type: {:operator_info, info}}}} <- result,
-         %Proto.ObjectRef{id: id} <- elem(info.type, 1) do
-      ProbeMl.say("  model obj_ref", inspect(id))
-      ProbeMl.say("  model uid", inspect(info.uid))
-      ProbeMl.say("  warning_message", inspect(info.warning_message))
-
-      # A real VectorUDT literal, back through the M15.2 decoder.
-      coefficients =
-        {:fetch,
-         %Proto.Fetch{
-           obj_ref: %Proto.ObjectRef{id: id},
-           methods: [%Proto.Fetch.Method{method: "coefficients"}]
-         }}
-
-      fetched = ProbeMl.send(session, coefficients)
-      ProbeMl.say("Fetch coefficients", ProbeMl.describe(fetched))
-
-      with {:ok, %{ml_command_result: %{result_type: {:param, literal}}}} <- fetched do
-        decoded = inspect(Latu.Result.Literal.value(literal), printable_limit: 90)
-        ProbeMl.say("  decoded by Latu.Result.Literal", decoded)
-      end
-
-      delete = %Proto.MlCommand.Delete{obj_refs: [%Proto.ObjectRef{id: id}]}
-      ProbeMl.say("Delete the model", ProbeMl.describe(ProbeMl.send(session, {:delete, delete})))
+      {:error, error} ->
+        inspect(error.error_class) <> " — " <> String.slice(error.message, 0, 70)
     end
+
+  ProbeMl.say(name <> " as a Spark function", answer)
+end
+
+# VectorAssembler as an MlRelation.Transform: the route that needs no SQL function, and the one
+# that also exercises `Latu.Plan.relation/1` (M15.3) and the laziness §2.1 claims for Transform.
+base =
+  Latu.sql!(session, """
+  SELECT * FROM VALUES (0.0, 0.0, 1.1), (0.0, 0.1, 1.0), (1.0, 2.0, 0.1), (1.0, 2.1, 0.2)
+  AS t(label, x1, x2)
+  """)
+
+string_type = %Proto.DataType{kind: {:string, %Proto.DataType.String{}}}
+
+input_cols = %Proto.Expression.Literal{
+  data_type: %Proto.DataType{
+    kind: {:array, %Proto.DataType.Array{element_type: string_type, contains_null: false}}
+  },
+  literal_type:
+    {:array,
+     %Proto.Expression.Literal.Array{
+       element_type: string_type,
+       elements: [
+         %Proto.Expression.Literal{literal_type: {:string, "x1"}},
+         %Proto.Expression.Literal{literal_type: {:string, "x2"}}
+       ]
+     }}
+}
+
+transform = %Proto.MlRelation{
+  ml_type:
+    {:transform,
+     %Proto.MlRelation.Transform{
+       operator:
+         {:transformer,
+          %Proto.MlOperator{
+            name: "org.apache.spark.ml.feature.VectorAssembler",
+            uid: "latu_probe_va",
+            type: :OPERATOR_TYPE_TRANSFORMER
+          }},
+       input: base.plan,
+       params: %Proto.MlParams{
+         params: %{
+           "inputCols" => input_cols,
+           "outputCol" => %Proto.Expression.Literal{literal_type: {:string, "features"}}
+         }
+       }
+     }}
+}
+
+assembled = %Latu.DataFrame{
+  session: session,
+  plan: Latu.Plan.relation({:ml_relation, transform})
+}
+
+# §2.1 says a Transform is pure plan building — this is that claim, asked directly.
+case Latu.schema(assembled) do
+  {:ok, schema} ->
+    ProbeMl.say("VectorAssembler schema (no execute)", inspect(Enum.map(schema, & &1.name)))
+
+  {:error, error} ->
+    ProbeMl.say("VectorAssembler schema", "REFUSED — " <> String.slice(error.message, 0, 90))
+end
+
+fit =
+  {:fit,
+   %Proto.MlCommand.Fit{
+     estimator: %Proto.MlOperator{
+       name: "org.apache.spark.ml.classification.LogisticRegression",
+       uid: "latu_probe_lr",
+       type: :OPERATOR_TYPE_ESTIMATOR
+     },
+     params: %Proto.MlParams{
+       params: %{"maxIter" => %Proto.Expression.Literal{literal_type: {:integer, 1}}}
+     },
+     dataset: assembled.plan
+   }}
+
+result = ProbeMl.send(session, fit)
+ProbeMl.say("Fit", ProbeMl.describe(result))
+
+with {:ok, %{ml_command_result: %{result_type: {:operator_info, info}}}} <- result,
+     %Proto.ObjectRef{id: id} <- elem(info.type, 1) do
+  ProbeMl.say("  model obj_ref", inspect(id))
+  ProbeMl.say("  model uid", inspect(info.uid))
+  ProbeMl.say("  warning_message", inspect(info.warning_message))
+
+  # A real VectorUDT literal, back through the M15.2 decoder.
+  coefficients =
+    {:fetch,
+     %Proto.Fetch{
+       obj_ref: %Proto.ObjectRef{id: id},
+       methods: [%Proto.Fetch.Method{method: "coefficients"}]
+     }}
+
+  fetched = ProbeMl.send(session, coefficients)
+  ProbeMl.say("Fetch coefficients", ProbeMl.describe(fetched))
+
+  with {:ok, %{ml_command_result: %{result_type: {:param, literal}}}} <- fetched do
+    decoded = inspect(Latu.Result.Literal.value(literal), printable_limit: 90)
+    ProbeMl.say("  decoded by Latu.Result.Literal", decoded)
+  end
+
+  delete = %Proto.MlCommand.Delete{obj_refs: [%Proto.ObjectRef{id: id}]}
+  ProbeMl.say("Delete the model", ProbeMl.describe(ProbeMl.send(session, {:delete, delete})))
 end
 
 IO.puts("")
