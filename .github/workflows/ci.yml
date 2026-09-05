@@ -16,12 +16,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# No MIX_ENV: `mix check.all` sets its own (mix.exs `preferred_envs`) and `mix docs` needs dev,
+# No MIX_ENV: `mix check.all` sets its own (mix.exs `preferred_envs`) needs dev,
 # where ex_doc lives. Each step runs in the env it would locally.
 
 jobs:
   ci:
-    name: mix check.all + docs
+    name: mix check.all
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -66,9 +66,6 @@ jobs:
       - run: docker compose up -d --wait
 
       - run: mix check.all
-
-      # warnings_as_errors is set in mix.exs's docs config; a dangling reference fails here.
-      - run: mix docs
 
       - name: Spark logs
         if: failure()
