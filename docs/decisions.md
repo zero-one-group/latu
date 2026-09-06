@@ -1252,3 +1252,15 @@ reattach tests — and interpreted, those dominate everything the compiles cost.
 at `local[*]`: 12.6 s. Hundreds of four-row queries each pay ten tasks and ten Arrow batches for
 work one task finishes first. The write stall that originally chose `local[1]` was measured
 under emulation and did not reappear; the slot count is kept on this measurement instead.
+
+## 2026-09-06 — `UnresolvedFunction.is_internal` stays absent
+
+`fun/3` must never set the field, not even to `false`. Spark keeps a second function registry —
+`FunctionRegistry.internal` — that the SQL parser never searches, and mllib registers
+`vector_to_array`, `array_to_vector` and `aggregate_metrics` into it. `SparkConnectPlanner`
+reroutes a name into that registry only when `is_internal` is **unset**, as a back-compat path;
+setting it to `false` sends the lookup to the builtin catalog, where those names are not, and the
+server answers `UNRESOLVED_ROUTINE`. Measured on 4.2.0 by `latu_ml`'s `dev/probe_ml_functions.exs`:
+unset resolves, `true` resolves, `false` does not. So a tidying pass that populated every proto
+field explicitly would silently take the ML functions away from `latu_ml`, and nothing in this
+repo would go red. Setting it to `true` is never needed, so there is no `internal:` option.

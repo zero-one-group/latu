@@ -115,6 +115,13 @@ ProbeMl.heading("3. The ML SQL functions, VectorAssembler, and Fit")
 
 # Roadmap §1 has these two in scope as plain Spark functions, which is what `Latu.ML.Functions`
 # would be built on. Anything but UNRESOLVED_ROUTINE means the name resolves.
+#
+# **This asks the wrong question — found 2026-09-06, left standing.** Both names are registered
+# in Spark's *internal* function registry, which the SQL parser never searches, so
+# UNRESOLVED_ROUTINE here is what they are supposed to answer and says nothing about the wire.
+# `latu_ml`'s `dev/probe_ml_functions.exs` asks the proto route instead. Kept because the answer
+# below is still true of SQL text, and because it is why the roadmap was wrong for five
+# milestones.
 for name <- ~w(array_to_vector vector_to_array) do
   answer =
     case Latu.sql(session, "SELECT #{name}(array(1.0, 2.0)) AS v") do
