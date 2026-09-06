@@ -1727,6 +1727,8 @@ defmodule Latu.Plan do
   def fun(name, arguments, opts \\ []) when is_binary(name) and is_list(arguments) do
     {arguments, refs} = drain_all(arguments)
 
+    # `is_internal` is left unset on purpose — that absence is what reaches Spark's internal
+    # function registry. `docs/decisions.md`, 2026-09-06.
     call = %Proto.Expression.UnresolvedFunction{
       function_name: name,
       arguments: arguments,

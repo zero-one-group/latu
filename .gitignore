@@ -1,3 +1,6 @@
+.DS_Store
+Claude outputs/
+
 **/__pycache__
 
 # The directory Mix will write compiled artifacts to.
