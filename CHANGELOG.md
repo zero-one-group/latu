@@ -19,6 +19,17 @@ its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader �
 streaming format, no dependency — and `Latu.Result.Nx` the mapping, behind the now-optional
 `:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
 
+**Every RPC retries on the session's `Latu.Retry`**, not only the result stream — PySpark's
+own behaviour — except the best-effort releases. A `RetryInfo` on an error makes it retryable
+whatever its status, with its delay as a floor under the backoff, capped by the new
+`max_server_retry_delay` (10 min); `%Latu.Error{}` gains `retry_delay`. A unary call's
+`[:latu, :retry, :attempt]` event carries `rpc` where an execution's carries `operation_id`.
+Smaller: a cleartext token is allowed to every loopback address, not four spellings of it, and
+an IPv6 literal host connects at all (`sc://[::1]:15002` crashed inside elixir-grpc);
+`SPARK_USER` precedes the OS user as the default `user_id`; `lit/1` refuses a non-UTF-8 binary
+and names Spark's `X'…'` literal; `true`/`false` are refused where a column name is taken
+instead of naming a column `"true"`. No migration.
+
 **`Latu.error_details/2` restores the whole message.** The server abbreviates a gRPC status
 message to 2048 characters, so a long analysis error arrived cut short with `...`; the detail
 carries it whole, and the call now puts it on the error beside the causes. No migration.

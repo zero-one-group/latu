@@ -11,7 +11,7 @@ defmodule Latu.Session do
 
     * `:timeout`, `:connect_timeout` — per-RPC and establishment deadlines.
     * `:window_size`, `:keepalive`, `:keepalive_tolerance` — HTTP/2 flow control and liveness.
-    * `:retry` — a `Latu.Retry`, the policy every execution retries under.
+    * `:retry` — a `Latu.Retry`, the policy every RPC retries under.
 
   Every one is a `Latu.connect/2` option, so none of them needs a struct poke.
 
@@ -368,7 +368,10 @@ defmodule Latu.Session do
   # Defaults
   # =============================================
 
-  defp default_user_id, do: System.get_env("USER") || System.get_env("USERNAME") || ""
+  # PySpark's own order: SPARK_USER, then the OS user.
+  defp default_user_id do
+    System.get_env("SPARK_USER") || System.get_env("USER") || System.get_env("USERNAME") || ""
+  end
 
   defp default_client_type do
     "latu/#{@version} elixir/#{System.version()} otp/#{System.otp_release()}"

@@ -20,8 +20,9 @@ defmodule Latu.Telemetry do
 
   Metadata is `rpc`, `outcome` and `error_class` on the RPC events, and `session_id` plus
   `operation_id` on everything that belongs to an execution. The RPC events carry no
-  `operation_id`; `[:latu, :execute, :stop]` carries an `outcome` of `:ok`, `:error` or
-  `:abandoned`. Durations are in native time units, as `:telemetry.span/3`'s are.
+  `operation_id`; a `[:latu, :retry, :attempt]` for a unary call carries `rpc` in its place;
+  `[:latu, :execute, :stop]` carries an `outcome` of `:ok`, `:error` or `:abandoned`.
+  Durations are in native time units, as `:telemetry.span/3`'s are.
 
   **`[:latu, :rpc, :*]` covers every gRPC call, including `ExecutePlan` — but for that one and
   `ReattachExecute` it measures *opening* the stream, not draining it**, because a Latu result

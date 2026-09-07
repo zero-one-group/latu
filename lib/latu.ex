@@ -80,7 +80,7 @@ defmodule Latu do
     * `:keepalive` — HTTP/2 ping interval in milliseconds. Defaults to `60_000`.
     * `:keepalive_tolerance` — pings missed before the channel is considered dead. Defaults
       to `2`.
-    * `:retry` — a `Latu.Retry` policy every execution retries under. Defaults to `%Latu.Retry{}`.
+    * `:retry` — a `Latu.Retry` policy every RPC retries under. Defaults to `%Latu.Retry{}`.
 
   Why these numbers, and why the knobs live on the session rather than in application config,
   is in `docs/decisions.md`.
@@ -779,7 +779,9 @@ defmodule Latu do
   name. When no data name is in the schema, the schema renames by position —
   `create_dataframe(session, [n: [1]], schema: "id INT")` — and a schema naming some columns but
   not others is refused, naming them. The server parses the schema as the frame is built (one
-  round trip), so a malformed one fails here rather than at the first action.
+  round trip), so a malformed one fails here rather than at the first action. Every column
+  ships nullable — Explorer writes Arrow fields so — and the server refuses to cast one to a
+  `NOT NULL` field (`NULLABLE_COLUMN_OR_FIELD`); leave nullability to the default.
 
   ## Examples
 

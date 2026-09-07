@@ -237,6 +237,15 @@ defmodule Latu.Client.ExecutionTest do
       assert {{:fail, _}, _} = Execution.step(execution, no_status)
     end
 
+    test "unless it carries a RetryInfo, whose delay is then the floor", %{
+      execution: execution
+    } do
+      throttled = Error.new(:rpc, "RESOURCE_EXHAUSTED: later", status: 8, retry_delay: 3_000)
+
+      assert {{:reattach, wait}, _} = Execution.step(execution, {:error, throttled})
+      assert wait >= 3_000 and wait < 3_500
+    end
+
     test "back off on PySpark's schedule", %{execution: execution} do
       {delays, _} =
         Enum.map_reduce(1..7, execution, fn _, execution ->

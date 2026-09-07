@@ -14,9 +14,13 @@ defmodule Latu.Retry do
   Times are in milliseconds. `max_retries: 0` turns retrying off, which is what a test that
   wants a failure to surface immediately wants.
 
-  What is retried is not configurable, and deliberately: an `UNAVAILABLE`, a disconnected
-  cursor, and a lost handle with nothing received yet.
+  What is retried is not configurable, and deliberately — `retryable?/1` is PySpark's list: an
+  `UNAVAILABLE`, a disconnected cursor, anything the server attached a `RetryInfo` to, and, for
+  an execution, a lost handle with nothing received yet. A `RetryInfo`'s delay is a floor under
+  the backoff, capped at `max_server_retry_delay`.
   """
+
+  alias Latu.Error
 
   @default_max_retries 15
   @default_initial_backoff 50
@@ -24,15 +28,28 @@ defmodule Latu.Retry do
   @default_backoff_multiplier 4.0
   @default_jitter 500
   @default_min_jitter_threshold 2_000
+  @default_max_server_retry_delay 600_000
 
-  @counts [:max_retries, :initial_backoff, :max_backoff, :jitter, :min_jitter_threshold]
+  @counts [
+    :max_retries,
+    :initial_backoff,
+    :max_backoff,
+    :jitter,
+    :min_jitter_threshold,
+    :max_server_retry_delay
+  ]
+
+  # gRPC status codes, spelled out: nothing outside `Latu.Client` may reference GRPC.
+  @unavailable 14
+  @internal 13
 
   defstruct max_retries: @default_max_retries,
             initial_backoff: @default_initial_backoff,
             max_backoff: @default_max_backoff,
             backoff_multiplier: @default_backoff_multiplier,
             jitter: @default_jitter,
-            min_jitter_threshold: @default_min_jitter_threshold
+            min_jitter_threshold: @default_min_jitter_threshold,
+            max_server_retry_delay: @default_max_server_retry_delay
 
   @type t :: %__MODULE__{
           max_retries: non_neg_integer(),
@@ -40,7 +57,8 @@ defmodule Latu.Retry do
           max_backoff: non_neg_integer(),
           backoff_multiplier: number(),
           jitter: non_neg_integer(),
-          min_jitter_threshold: non_neg_integer()
+          min_jitter_threshold: non_neg_integer(),
+          max_server_retry_delay: non_neg_integer()
         }
 
   @doc """
@@ -63,21 +81,41 @@ defmodule Latu.Retry do
   end
 
   @doc """
+  Whether a failed call is worth trying again — PySpark's `DefaultPolicy.can_retry`.
+
+  `UNAVAILABLE`; `INTERNAL` naming a disconnected cursor; or any status at all when the server
+  attached a `RetryInfo`, which is how a gateway says "later" rather than "no".
+  """
+  @spec retryable?(Error.t()) :: boolean()
+  def retryable?(%Error{retry_delay: delay}) when is_integer(delay), do: true
+  def retryable?(%Error{status: @unavailable}), do: true
+
+  def retryable?(%Error{status: @internal, message: message}) do
+    message =~ "INVALID_CURSOR.DISCONNECTED"
+  end
+
+  def retryable?(%Error{}), do: false
+
+  @doc """
   How long to wait before attempt `attempt`, counting from zero.
 
       iex> Latu.Retry.wait(Latu.Retry.new(), 0)
       50
 
-  Jitter above `min_jitter_threshold` is the only nondeterminism in the transport, and it is
-  bounded by `jitter`.
+  A `floor` — the server's `RetryInfo` delay, when it sent one — lifts the wait to at least
+  that, capped at `max_server_retry_delay`; jitter goes on after. Jitter above
+  `min_jitter_threshold` is the only nondeterminism in the transport, and it is bounded by
+  `jitter`.
   """
-  @spec wait(t(), non_neg_integer()) :: non_neg_integer()
-  def wait(%__MODULE__{} = retry, attempt) when is_integer(attempt) and attempt >= 0 do
+  @spec wait(t(), non_neg_integer(), non_neg_integer() | nil) :: non_neg_integer()
+  def wait(%__MODULE__{} = retry, attempt, floor \\ nil)
+      when is_integer(attempt) and attempt >= 0 do
     capped = min(retry.initial_backoff * retry.backoff_multiplier ** attempt, retry.max_backoff)
+    lifted = max(capped, min(floor || 0, retry.max_server_retry_delay))
 
-    if capped > retry.min_jitter_threshold,
-      do: trunc(capped + :rand.uniform() * retry.jitter),
-      else: trunc(capped)
+    if lifted > retry.min_jitter_threshold,
+      do: trunc(lifted + :rand.uniform() * retry.jitter),
+      else: trunc(lifted)
   end
 
   defp validated!(%__MODULE__{} = retry) do
