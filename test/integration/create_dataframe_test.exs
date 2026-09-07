@@ -55,6 +55,46 @@ defmodule Latu.Integration.CreateDataFrameTest do
       assert Explorer.DataFrame.dtypes(frame) == %{"a" => {:s, 32}}
     end
 
+    test "a schema is matched by name, whatever order it names the columns in", %{
+      session: session
+    } do
+      # Row maps arrive sorted (first, last); the server applies a schema by position. Two
+      # STRING columns would swap without an error if the names were not honoured.
+      df =
+        Latu.create_dataframe!(session, [%{first: "Ada", last: "Lovelace"}],
+          schema: "last STRING, first STRING"
+        )
+
+      assert Latu.columns!(df) == ["last", "first"]
+      assert Latu.collect!(df) == [%{last: "Lovelace", first: "Ada"}]
+    end
+
+    test "an Explorer frame is arranged the same way", %{session: session} do
+      frame = Explorer.DataFrame.new(b: [1.5], a: [1])
+      df = Latu.create_dataframe!(session, frame, schema: "a INT, b DOUBLE")
+
+      assert Latu.collect!(df) == [%{a: 1, b: 1.5}]
+    end
+
+    test "a schema sharing no name with the data renames by position", %{session: session} do
+      df = Latu.create_dataframe!(session, [n: [1, 2]], schema: "id INT")
+
+      assert Latu.collect!(df) == [%{id: 1}, %{id: 2}]
+    end
+
+    test "one that names some columns and not others is refused", %{session: session} do
+      assert_raise ArgumentError, ~r/only half matches/, fn ->
+        Latu.create_dataframe(session, [%{a: 1, b: 2}], schema: "a INT, c INT")
+      end
+    end
+
+    test "a malformed schema fails as the frame is built, not at the first action", %{
+      session: session
+    } do
+      assert {:error, %Latu.Error{kind: :rpc}} =
+               Latu.create_dataframe(session, [%{a: 1}], schema: "a WHATEVER")
+    end
+
     test "empty data with a schema is a typed empty frame", %{session: session} do
       df = Latu.create_dataframe!(session, [], schema: "id INT, name STRING")
 

@@ -1314,3 +1314,17 @@ all three, and every coercion point follows it: `to_name/1`, `to_expr/1` on `:*`
 `F.count(:*)` sends `count(*)` as it is. PySpark rewrites `count(col("*"))` to `count(1)`
 client-side yet sends the star for `count("*")`, and Catalyst's `expandStarExpression` turns
 either into `count(1)`; an integration test pins that rows with nulls are counted.
+\n
+## 2026-09-07 — `create_dataframe/3` arranges the data to the schema's names
+
+`transformLocalRelation` applies a schema as `toDF(names).to(schema)`: positionally, then a cast.
+Latu sorts a map's columns by key, so `[%{id: 1, name: "Ada"}]` with `schema: "name STRING, id
+INT"` put `1` under `name` and cast `"Ada"` to `INT` — two STRING columns would have swapped
+without any error. The docstring said so; PySpark indexes dict rows by field name, so it never
+could. Now the data is arranged to the schema before it ships: by name when the data's names
+are the schema's, by position when none are (a rename, the keyword-list form's old contract),
+refused with both lists when some are. Names come from one `DDLParse` round trip — the arm reads
+DDL only, so a JSON schema's names are decoded locally — which also means a malformed schema
+fails at `create_dataframe/3` instead of at the first action. One RPC on a call that already
+spends one on the session configs. `Latu.Result.names/1` and `arrange/2` keep the Explorer call
+inside the boundary.

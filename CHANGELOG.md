@@ -19,6 +19,14 @@ its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader â€
 streaming format, no dependency â€” and `Latu.Result.Nx` the mapping, behind the now-optional
 `:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
 
+**`create_dataframe/3` matches a schema to the data by name.** The server applies a
+`LocalRelation` schema positionally and Latu sorts a row map's columns by key, so a schema in any
+other order silently put values under the wrong names. The data is now arranged to the schema's
+field names first (one `DDLParse` round trip; a JSON schema needs none); a schema sharing no
+name with the data still renames by position, and one that half matches is refused. A
+malformed schema now fails when the frame is built rather than at its first action. No
+migration.
+
 **`"t.*"` is a star, and `col(df, "*")` is a tagged one.** `select(df, "t.*")` sent a column
 called `t.*`, which Spark cannot resolve; it is now `UnresolvedStar` with the target, as
 PySpark's `col` reads it, in every name and expression position (`:"t.*"` too). `Latu.col(df,

@@ -54,6 +54,24 @@ defmodule Latu.LocalDataTest do
         DataFrame.columns_for([%{a: 1, b: 2}, %{a: 3}])
       end
     end
+
+    test "a JSON schema naming some of the columns and not others", %{session: session} do
+      # The JSON form's names need no server, so this refusal comes before the round trip that
+      # a DDL schema would take.
+      schema =
+        ~s({"type":"struct","fields":[{"name":"a","type":"integer","nullable":true},) <>
+          ~s({"name":"c","type":"integer","nullable":true}]})
+
+      assert_raise ArgumentError, ~r/only half matches.*\["c"\].*\["b"\]/, fn ->
+        DataFrame.create_dataframe(session, [%{a: 1, b: 2}], schema: schema)
+      end
+    end
+
+    test "a JSON schema that is not a struct", %{session: session} do
+      assert_raise ArgumentError, ~r/a JSON schema is a struct/, fn ->
+        DataFrame.create_dataframe(session, [%{a: 1}], schema: ~s({"type":"integer"}))
+      end
+    end
   end
 
   describe "column coercion" do

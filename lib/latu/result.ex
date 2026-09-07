@@ -108,6 +108,17 @@ defmodule Latu.Result do
   @spec size(DataFrame.t()) :: non_neg_integer()
   def size(%DataFrame{} = frame), do: DataFrame.n_rows(frame)
 
+  @doc "Column names, in the frame's order."
+  @spec names(DataFrame.t()) :: [String.t()]
+  def names(%DataFrame{} = frame), do: DataFrame.names(frame)
+
+  @doc """
+  The frame's columns in this order — the order a schema names them, for
+  `Latu.create_dataframe/3`. Every name must be a column.
+  """
+  @spec arrange(DataFrame.t(), [String.t()]) :: DataFrame.t()
+  def arrange(%DataFrame{} = frame, names) when is_list(names), do: DataFrame.select(frame, names)
+
   @doc """
   One Arrow IPC stream for the whole frame — exactly the bytes `LocalRelation.data` carries.
 
