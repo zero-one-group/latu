@@ -30,7 +30,8 @@ defmodule Latu.Error do
       one field away when you do.
     * `error_id` — the handle `Latu.error_details/2` fetches the full cause chain with.
     * `causes` — only populated by `Latu.error_details/2`. One entry per exception in the
-      chain, root cause last.
+      chain, root cause last. The same call restores a `message` the server abbreviated to
+      2048 characters on the wire.
 
   `status` and `details` are `GRPC.RPCError`'s, `:rpc` only; `details` keeps the raw trailer
   in case something Latu does not read is in it.

@@ -1144,7 +1144,15 @@ defmodule Latu.Client do
   # in its own handler — so a second call answers with an empty message. Keeping what we already
   # have makes the call idempotent for the caller even though the server is not.
   defp filled(%Error{} = error, []), do: error
-  defp filled(%Error{} = error, causes), do: %{error | causes: causes}
+
+  # The status message is the server's `Utils.abbreviate(getMessage, 2048)`; the thrown error's
+  # detail carries the same text whole, and PySpark reads it from there.
+  defp filled(%Error{} = error, [thrown | _] = causes) do
+    %{error | causes: causes, message: whole(error.message, thrown.message)}
+  end
+
+  defp whole(abbreviated, message) when message in [nil, ""], do: abbreviated
+  defp whole(_abbreviated, message), do: message
 
   # The response is a flat list of exceptions plus `cause_idx` links, root first. Walking the
   # chain rather than returning the list is the whole value: the root cause is what you want,
@@ -1239,7 +1247,8 @@ defmodule Latu.Client do
   end
 
   # Always explicit. Left to itself elixir-grpc reaches for CAStore and raises if it is
-  # absent; the OS trust store is already there.
+  # absent; the OS trust store is already there. SNI and HTTPS wildcard matching are Gun's own
+  # additions (`gun:ensure_tls_opts/3`), so neither is set here.
   defp credential(%Session{use_ssl: false}), do: {:ok, nil}
 
   defp credential(%Session{use_ssl: true}) do
