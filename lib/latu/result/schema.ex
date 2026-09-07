@@ -48,7 +48,8 @@ defmodule Latu.Result.Schema do
   }
 
   @doc """
-  `:ok` when every column can decode; `{:error, _}` naming the first that cannot.
+  `:ok` when every column can decode; `{:error, _}` naming the first that cannot — a type the
+  decoder has no dtype for, or a name two columns share.
 
   `nil` means the server sent no schema — nothing to check, and the decode may still succeed.
   """
@@ -56,7 +57,9 @@ defmodule Latu.Result.Schema do
   def check(nil), do: :ok
 
   def check(%Proto.DataType{kind: {:struct, %Proto.DataType.Struct{fields: fields}}}) do
-    each(fields, fn field -> walk(field.data_type, field.name) end)
+    with :ok <- distinct(fields) do
+      each(fields, fn field -> walk(field.data_type, field.name) end)
+    end
   end
 
   def check(%Proto.DataType{} = other) do
@@ -158,6 +161,26 @@ defmodule Latu.Result.Schema do
   def simple_string(%Proto.DataType{kind: {kind, _}}), do: to_string(kind)
 
   def simple_string(_missing), do: "unknown"
+
+  # Polars keys a frame by column name, so a batch that carries one name twice panics inside
+  # its IPC reader — as namelessly as an unsupported dtype does. Spark allows the duplicate; a
+  # join whose sides share a non-key name is the usual way to get one.
+  defp distinct(fields) do
+    counts = Enum.frequencies_by(fields, & &1.name)
+
+    case Enum.find(fields, &(Map.fetch!(counts, &1.name) > 1)) do
+      nil ->
+        :ok
+
+      %{name: name} ->
+        {:error,
+         Error.new(
+           :decode,
+           "the result has #{counts[name]} columns named #{name}, and a frame cannot hold " <>
+             "two of one name; alias them apart in select/2, or rename/2 every column"
+         )}
+    end
+  end
 
   defp walk(nil, path) do
     {:error, Error.new(:decode, "column #{path} carries no type at all")}

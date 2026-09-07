@@ -11,9 +11,9 @@ defmodule Latu.Result do
   render *into* the type string — `array<int>`, `struct<a:int,b:string>` — so a schema stays a
   flat, pattern-matchable list however deep the data is.
 
-  A schema is also checked before any bytes are decoded: Spark's interval types panic inside
-  Polars' NIF rather than failing cleanly, so a result carrying one is refused, by column name,
-  using the `DataType` the server sends ahead of the first batch.
+  A schema is also checked before any bytes are decoded: Spark's interval types, and two columns
+  of one name, panic inside Polars' NIF rather than failing cleanly, so a result carrying either
+  is refused, by column name, using the `DataType` the server sends ahead of the first batch.
   """
 
   alias Explorer.DataFrame

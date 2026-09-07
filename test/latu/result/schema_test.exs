@@ -110,6 +110,15 @@ defmodule Latu.Result.SchemaTest do
     assert message =~ "column x has a Spark type Latu does not know"
   end
 
+  test "two columns of one name are refused, naming the column and the count" do
+    twice = schema(id: long(), name: string_type(), id: string_type())
+
+    assert {:error, %Error{kind: :decode, message: message}} = Schema.check(twice)
+    assert message =~ "the result has 2 columns named id"
+    assert message =~ "select/2"
+    assert message =~ "rename/2"
+  end
+
   test "a result schema that is not a struct is a protocol surprise" do
     assert {:error, %Error{kind: :decode, message: message}} = Schema.check(long())
     assert message =~ "expected a struct result schema"

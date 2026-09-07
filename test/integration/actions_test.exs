@@ -91,6 +91,27 @@ defmodule Latu.Integration.ActionsTest do
       assert gap =~ "1"
     end
 
+    test "two columns of one name are refused with the name, not a NIF panic", %{
+      session: session
+    } do
+      # Polars keys a frame by name; a batch that repeats one panics inside its IPC reader.
+      df = Latu.sql!(session, "SELECT 1 AS x, 2 AS x")
+
+      assert {:error, %Latu.Error{kind: :decode, message: message}} = Latu.collect(df)
+      assert message =~ "the result has 2 columns named x"
+      assert message =~ "rename/2"
+
+      assert_raise Latu.Error, ~r/2 columns named x/, fn ->
+        df |> Latu.stream() |> Enum.to_list()
+      end
+    end
+
+    test "and the rename it suggests actually works", %{session: session} do
+      df = session |> Latu.sql!("SELECT 1 AS x, 2 AS x") |> Latu.rename([:x, :y])
+
+      assert Latu.collect(df) == {:ok, [%{x: 1, y: 2}]}
+    end
+
     test "aggregates decode: sum, avg, distinct count", %{session: session} do
       df =
         session

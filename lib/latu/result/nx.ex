@@ -70,10 +70,17 @@ if Code.ensure_loaded?(Nx) do
     defp group(batches, wanted) do
       names = batches |> hd() |> Map.fetch!(:columns) |> Enum.map(& &1.name)
       missing = if wanted, do: wanted -- names, else: []
+      repeated = Enum.find(names, &(Enum.count(names, fn n -> n == &1 end) > 1))
 
       cond do
         Enum.any?(batches, &(Enum.map(&1.columns, fn c -> c.name end) != names)) ->
           {:error, "the batches do not all carry the same columns"}
+
+        # Tensors are keyed by name, so the second column would vanish without a word.
+        repeated ->
+          {:error,
+           "the result has more than one column named #{repeated}, and tensors are keyed by " <>
+             "name; alias them apart in select/2, or rename/2 every column"}
 
         missing != [] ->
           {:error,

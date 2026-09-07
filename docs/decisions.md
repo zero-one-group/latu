@@ -1288,3 +1288,14 @@ Reversing it means checking the **Arrow** schema where the proto schema says not
 would cost no extra round trip; the price is a second decodability table, in Arrow's vocabulary
 rather than Spark's, and a guard with two sources of truth. Not worth it for a struct nobody
 wants.
+
+## 2026-09-07 — Two columns of one name are refused before decoding
+
+Polars keys a frame by column name, so an Arrow batch that repeats one panics inside its IPC
+reader — the same nameless `:nif_panicked` the dtype guard exists for, and one Spark produces
+routinely: a join whose sides share a non-key name, or `SELECT 1 AS x, 2 AS x`. PySpark carries
+the duplicate through (`Row` repeats the name, pandas repeats the column); Explorer cannot.
+`Latu.Result.Schema.check/1` refuses it from the same latched `DataType`, naming the column and
+the fix — aliases in `select/2`, or `rename/2` positionally. `Latu.Result.Nx` refuses it too,
+for a different reason: its tensors are keyed by name, so the second column vanished in silence.
+`to_arrow/2` hands the bytes over as ever.
