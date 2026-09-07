@@ -1264,3 +1264,27 @@ server answers `UNRESOLVED_ROUTINE`. Measured on 4.2.0 by `latu_ml`'s `dev/probe
 unset resolves, `true` resolves, `false` does not. So a tidying pass that populated every proto
 field explicitly would silently take the ML functions away from `latu_ml`, and nothing in this
 repo would go red. Setting it to `true` is never needed, so there is no `internal:` option.
+
+## 2026-09-07 — `to_explorer/2` keeps refusing a Vector column
+
+Spark 4.2.0 describes `features`, `rawPrediction` and `probability` as a UDT with `sql_type`
+unset. `Latu.Result.Schema` refuses what the server declines to describe, because the guard
+exists so an unsupported dtype names its column instead of panicking inside Polars' NIF.
+
+**Polars can in fact read those bytes** — measured 2026-09-07. `to_arrow/2` on an
+`array_to_vector` column, through `Explorer.DataFrame.load_ipc_stream/1`, gives
+`v struct[4] [%{"type" => 1, "size" => nil, "indices" => nil, "values" => [...]}]`. So the
+refusal is a choice rather than a limit, and this entry exists so the next person to find
+`sql_type: nil` does not have to rediscover that by experiment.
+
+It stands, because what comes back is Spark's **internal** `VectorUDT` layout and not a vector:
+a caller would unpack the struct, take `values`, and rebuild. Both routes that give a useful
+shape already exist — `vector_to_array` server-side, for an `array<double>` that Explorer reads
+as `list[f64]`, and `Latu.to_nx/2` for an `{n, d}` tensor off the same bytes with no unpacking
+at all.
+
+Reversing it means checking the **Arrow** schema where the proto schema says nothing.
+`Latu.Result.Arrow.schema/1` makes that possible and the batches are already in hand, so it
+would cost no extra round trip; the price is a second decodability table, in Arrow's vocabulary
+rather than Spark's, and a guard with two sources of truth. Not worth it for a struct nobody
+wants.
