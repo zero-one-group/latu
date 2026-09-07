@@ -160,6 +160,42 @@ defmodule Latu do
   end
 
   @doc """
+  Put a jar on the session, so a class in it resolves by name.
+
+      :ok = Latu.add_jar(session, "udfs.jar", File.read!("priv/udfs.jar"))
+      {:ok, _} = Latu.sql(session, "CREATE FUNCTION my_udf AS 'com.example.MyUdf'")
+      Latu.select(df, [Latu.Column.fun("my_udf", [:price])])
+
+  Latu still ships no code of its own and does no local file IO: a jar is bytes you hand it,
+  under a name. What the server does with them is `sparkContext.addJar`, so whatever the jar
+  registers is then callable the way any other registered function is — by name through
+  `Latu.Column.fun/3`, or through `CREATE FUNCTION` and `sql/3`.
+
+  `name` is the artifact's identity rather than a hash of its bytes. Re-sending **identical**
+  bytes under a name the session already holds is a no-op; different bytes under that name are
+  refused, and a jar cannot be replaced in a live session — a new name is the only way to a new
+  version. `Latu.sql(session, "LIST JARS")` is what a session holds.
+
+  Session-scoped, and gone when the session ends. It reaches the driver's classloader, which is
+  what resolving a function name needs; code that has to run in a **task** wants the jar on the
+  cluster's own classpath instead.
+  """
+  @spec add_jar(Session.t(), String.t(), binary()) :: :ok | {:error, Error.t()}
+  def add_jar(%Session{} = session, name, contents)
+      when is_binary(name) and is_binary(contents) do
+    with {:ok, _session} <- Client.add_jar(session, name, contents), do: :ok
+  end
+
+  @doc "Like `add_jar/3`, raising on failure."
+  @spec add_jar!(Session.t(), String.t(), binary()) :: :ok
+  def add_jar!(%Session{} = session, name, contents) do
+    case add_jar(session, name, contents) do
+      :ok -> :ok
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
   Fill in an error's full server-side cause chain.
 
       {:error, error} = Latu.collect(df)

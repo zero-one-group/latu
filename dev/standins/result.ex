@@ -13,6 +13,8 @@ defmodule Latu.Result do
   def only(_frame, _column), do: {:error, :stand_in}
   def from_columns(columns), do: {:frame, columns}
   def size(_frame), do: 0
+  def names(_frame), do: []
+  def arrange(frame, _names), do: frame
   def to_ipc(_frame), do: <<>>
   def to_ipc_chunks(_frame, _rows_per_chunk), do: []
 end

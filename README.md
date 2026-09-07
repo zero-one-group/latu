@@ -18,7 +18,7 @@ predecessor, is Javanese for *fire*.
 
 ```elixir
 def deps do
-  [{:latu, "~> 0.3"}]
+  [{:latu, "~> 0.4"}]
 end
 ```
 
@@ -106,11 +106,11 @@ interrupting a query by tag from another process; session config both ways; per-
 callbacks; errors carrying Spark's own error class and SQLSTATE; `:telemetry` events; and
 Livebook rendering behind an optional `:kino` dependency.
 
-**Not yet, or never.** MLlib and structured streaming are deferred to separate packages, for
-different reasons: a streaming query is a lifecycle Latu does not own, and ML's 103-operator
-parameter surface has nothing machine-readable to check it against. There are no UDFs written
-in Elixir, no RDDs and no `SparkContext` — Spark Connect offers no client in any language a
-path to them.
+**Not yet, or never.** MLlib and structured streaming live in separate packages, for different
+reasons: a streaming query is a lifecycle Latu does not own, and MLlib is a surface of its own
+— a server-side model cache, Spark's on-disk model format, its own operator registry — with no
+reason to share Latu's release cadence. There are no UDFs written in Elixir, no RDDs and no
+`SparkContext` — Spark Connect offers no client in any language a path to them.
 
 ## What this is
 

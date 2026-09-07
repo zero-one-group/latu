@@ -723,7 +723,9 @@ estimators and 61 transformers addressed by Java class name; `MlParams` is
 operators' parameters would be hand-transcribed and nothing would notice drift. A package whose
 claim is "checked against PySpark's own plans" cannot contain a large surface checked against
 nobody. *(This entry originally argued from resource ownership — `fit` allocates a server-side
-`ObjectRef`. That premise was falsified by `checkpoint/2`; see the M13.5 entry.)*
+`ObjectRef`. That premise was falsified by `checkpoint/2`; see the M13.5 entry. The verification
+premise above was falsified too; see the 2026-09-07 entry. The decision stands on other
+grounds.)*
 
 **What Latu owes `latu_ml` is a seam, not ML code**, and both landed at M11.1:
 `Latu.Plan.plan_id/0` is public (one allocator for plan ids), and `Client.execute/2` returns a
@@ -1354,3 +1356,67 @@ names Spark's `X'…'`. **Booleans are refused wherever a name is taken.**
 
 Not done: caching the `create_dataframe/3` config probe on the returned session — a caller
 rarely threads `df.session` back, and a cached threshold goes stale when `set_conf/3` moves it.
+
+## 2026-09-07 — MLlib stays a separate package, on surface rather than verification
+
+The 2026-09-02 entry above put ML outside Latu because its parameters had no oracle. **That was
+wrong, and measurably so**: `latu_ml`'s two extractors read every operator's params, converters
+and defaults out of PySpark's own classes, and the server's attribute allowlist out of
+`MLUtils.scala`, into committed registries whose regeneration *is* the drift check. The surface
+is 109 operators and 981 params on 4.2.0, counted rather than transcribed.
+
+What the decision now rests on is that MLlib is a different thing wearing the same twelve RPCs:
+a **server-side model cache** with a lifetime a caller has to manage, Spark's **on-disk model
+format** as the interop contract, and an operator registry generated from sources Latu has no
+other reason to read. None of it touches the DataFrame API, and its release cadence has no
+reason to be Latu's. Latu owes it a seam, which is what M11.1 and M15 shipped.
+
+Corrected where the old reason had been copied: `README.md`, `usage-rules.md` (which ships) and
+`docs/guides/from-pyspark.md`.
+
+## 2026-09-07 — `add_jar/3`: name and bytes, one prefix, no local file IO
+
+M12.5 deferred shipping a jar **on testability**: it needed `AddArtifacts` under a `jars/`
+prefix plus a `RegisterFunction`, and "cannot be exercised end to end without a jar in the repo
+or a JDK in the compose image". Half of that reasoning is now void and the other half turned out
+to be a different feature.
+
+**A jar is a zip.** `:zip.create/2` builds a valid one in the test, in memory, so
+`test/integration/artifact_test.exs` needs no JDK and commits no fixture. The stated blocker is
+gone, and nothing was plan-pinned to work around it.
+
+**`RegisterFunction` is not part of this.** Registering a Java UDF is `CREATE FUNCTION` through
+`Latu.sql/3`, which already works and which `udf_test.exs` already covers with a SQL UDF; the
+session's function registry does not record what put an entry there. So the gap was only ever
+getting the jar onto the session, which is one verb.
+
+**Name and bytes, not a path.** `add_jar/3` takes the contents, because Latu does no local file
+IO anywhere else — a reader goes through Spark, `create_dataframe/3` takes data in memory — and
+a path form would have been the first place it did. It would also have needed an error kind
+`Latu.Error` does not have: a missing file is a runtime condition, not the `ArgumentError` Latu
+raises for a programmer's mistake. `File.read!/1` at the call site is one word and keeps the
+failure where the caller can see it.
+
+**One prefix, not a general `add_artifact`.** Spark's artifact kinds are `cache/`, `jars/`,
+`pyfiles/`, `archives/`, `files/` and `classes/`. `cache/` is Latu's own, for a blob a plan
+references by hash; `jars/` is the only other one with a use case a Latu caller has. The rest
+would be surface with no story, so `artifact_requests/3` takes the prefix and only `jars/` is
+exposed.
+
+**No `ArtifactStatus` pre-check.** `cache_artifacts/2` asks first because its names *are*
+content hashes, so a hit means the bytes are already there and a large upload can be skipped. A
+jar's name is not its hash, `ArtifactStatus`'s behaviour for non-`cache/` prefixes is unverified,
+and the server already short-circuits an identical re-send inside `ArtifactManager` — so the
+check would be a round trip buying an unmeasured guess. Left out.
+
+**The action returns `:ok` and drops the confirmed session**, as `set_confs/2` and `unset_conf/2`
+do: `Latu.Client.add_jar/3` answers `{:ok, session}` because every Client call confirms the
+session ids, and the facade discards it. Nothing is lost — a restarted server is still detected,
+only the `server_session_id` pin waits for the next call that threads a session back.
+
+**What it does not reach.** A session jar goes on the driver's classloader, which is what
+resolving a function name needs. It does **not** reach the executor task classloader: measured
+in `latu_ml`'s `dev/probe_ext.exs`, where an ML estimator uploaded this way was discovered on
+the driver and then failed inside its own Spark job with `ClassNotFound`. Code that has to run
+in a task wants the jar on the cluster's classpath, and the docstring says so rather than
+letting a caller find out from a stage failure.
