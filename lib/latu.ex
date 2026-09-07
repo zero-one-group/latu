@@ -773,10 +773,12 @@ defmodule Latu do
       needs one**, since there is nothing to infer from. There is no client-side schema model,
       here or in `read/2`.
 
-  **A schema is applied by position, and row maps are sorted by key** — so
-  `[%{id: 1, jan: 10.0, feb: 20.0}]` with `schema: "id INT, jan DOUBLE, feb DOUBLE"` casts the
-  *feb* column to `id INT` and says nothing. Use the keyword-list form when both the order and
-  the schema matter; it is columns in declared order.
+  **A schema is matched to the data by name**, whatever order either is in:
+  `[%{id: 1, jan: 10.0}]` with `schema: "jan DOUBLE, id INT"` puts each value under its own
+  name. When no data name is in the schema, the schema renames by position —
+  `create_dataframe(session, [n: [1]], schema: "id INT")` — and a schema naming some columns but
+  not others is refused, naming them. The server parses the schema as the frame is built (one
+  round trip), so a malformed one fails here rather than at the first action.
 
   ## Examples
 

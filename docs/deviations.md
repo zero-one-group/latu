@@ -285,9 +285,11 @@ Rows exactly as `Latu.collect/2` spells them: atom keys in the server's own came
 ### `createDataFrame(data, schema=StructType(...))`
 
 `create_dataframe(session, data, schema: "id INT")`. No client-side schema model: the
-string goes verbatim — the proto takes DDL or Spark's JSON form — where PySpark ddl-parses it over
-an extra RPC. Rows/columns/Explorer frames instead of pandas/numpy; row-map columns sort by key,
-PySpark's own rule for dicts.
+string goes verbatim — the proto takes DDL or Spark's JSON form — and, like PySpark, Latu has
+the server parse it, but only to learn the field names: the data is arranged to them, so a row
+map's sorted columns land under their own names whatever order the schema is in. Rows/columns/
+Explorer frames instead of pandas/numpy; row-map columns sort by key, PySpark's own rule for
+dicts.
 
 ### `createDataFrame` threshold on `pa.Table.nbytes` → the Arrow IPC stream's byte size
 

@@ -7,9 +7,6 @@ defmodule Latu.Integration.JoinTest do
   # whether the right side of `lateral_join` and `nearest_by_join` can reference the left by
   # qualified name through `as/2` plus `expr/1`, since Spark refuses a tagged cross-frame
   # reference.
-  #
-  # Columns are keyword lists, never row maps: a map sorts its keys and a positional `schema:`
-  # then casts the wrong column to each type, silently.
   # Needs a Spark Connect server on :15003.
   import Latu.Column
 

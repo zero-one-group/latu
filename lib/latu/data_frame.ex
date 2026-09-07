@@ -157,10 +157,9 @@ defmodule Latu.DataFrame do
         {:ok, new(session, Plan.local_relation(nil, schema))}
 
       columns ->
-        frame = Result.from_columns(columns)
-        ipc = Result.to_ipc(frame)
-
-        with {:ok, configs, session} <- Client.get_configs(session, @local_relation_configs) do
+        with {:ok, frame, session} <- arranged(session, Result.from_columns(columns), schema),
+             ipc = Result.to_ipc(frame),
+             {:ok, configs, session} <- Client.get_configs(session, @local_relation_configs) do
           threshold = config_int!(configs, "spark.sql.session.localRelationCacheThreshold")
 
           if byte_size(ipc) < threshold do
@@ -176,6 +175,58 @@ defmodule Latu.DataFrame do
   @spec create_dataframe!(Session.t(), term(), keyword()) :: t()
   def create_dataframe!(%Session{} = session, data, opts \\ []) do
     unwrap!(create_dataframe(session, data, opts))
+  end
+
+  # The server applies `LocalRelation.schema` by position — `toDF(names).to(schema)` — and a map's
+  # columns arrive sorted by key, so a schema in any other order would put values under the
+  # wrong names without a word. The data is arranged to the schema's names instead: by name when
+  # they are the schema's, by position when none are (a rename), refused in between.
+  defp arranged(session, frame, nil), do: {:ok, frame, session}
+
+  defp arranged(session, frame, schema) do
+    with {:ok, wanted, session} <- schema_names(session, schema) do
+      names = Result.names(frame)
+
+      case {wanted -- names, names -- wanted} do
+        {[], []} -> {:ok, Result.arrange(frame, wanted), session}
+        {^wanted, ^names} -> {:ok, frame, session}
+        {missing, extra} -> raise ArgumentError, half_matched(missing, extra)
+      end
+    end
+  end
+
+  # `DDLParse` reads DDL only, where `LocalRelation.schema` also takes Spark's JSON form; the
+  # JSON names are one decode away, the DDL ones one round trip.
+  defp schema_names(session, schema) do
+    case JSON.decode(schema) do
+      {:ok, %{"type" => "struct", "fields" => fields}} when is_list(fields) ->
+        {:ok, Enum.map(fields, &Map.fetch!(&1, "name")), session}
+
+      {:ok, other} ->
+        raise ArgumentError, "a JSON schema is a struct with fields, not #{inspect(other)}"
+
+      {:error, _not_json} ->
+        with {:ok, data_type, session} <-
+               Client.analyzed(session, Plan.analyze(:ddl_parse, schema)),
+             {:ok, fields} <- Result.Schema.fields(data_type) do
+          {:ok, Enum.map(fields, & &1.name), session}
+        end
+    end
+  end
+
+  defp half_matched(missing, extra) do
+    sides =
+      Enum.reject(
+        [
+          missing != [] and "the schema names #{inspect(missing)} and the data does not",
+          extra != [] and "the data names #{inspect(extra)} and the schema does not"
+        ],
+        &(&1 == false)
+      )
+
+    "a schema is matched to the data by name, and this one only half matches: " <>
+      Enum.join(sides, "; ") <>
+      ". Name every column in both, or none in common to apply the schema by position"
   end
 
   # Over the threshold: chunk the frame, cache the chunks (and the schema, when given) as
