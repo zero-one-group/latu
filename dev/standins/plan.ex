@@ -143,6 +143,7 @@ defmodule Latu.Plan do
   def col(name), do: expression({:col, name})
   def col(name, %Relation{} = input), do: expression({:col, name, input})
   def star, do: expression({:star})
+  def star(target), do: expression({:star, target})
   def expr(sql), do: expression({:sql, sql})
   def fun(name, arguments, opts \\ []), do: expression({:fun, name, arguments, opts})
   def lit(value), do: expression({:lit, value})

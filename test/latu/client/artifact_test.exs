@@ -60,4 +60,22 @@ defmodule Latu.Client.ArtifactTest do
     assert [%{payload: {:batch, _}}, %{payload: {:begin_chunk, _}}, %{payload: {:chunk, _}}] =
              Client.artifact_requests(session, [{"small", "x"}, {"big", blob}])
   end
+
+  # The prefix is the artifact's kind. `cache/` is the default because a plan referencing a blob
+  # by hash is the only caller inside Latu; `jars/` is what `add_jar/3` sends.
+  test "a prefix names the artifact's kind", %{session: session} do
+    assert [%Proto.AddArtifactsRequest{payload: {:batch, batch}}] =
+             Client.artifact_requests(session, [{"udfs.jar", "PK\x03\x04"}], "jars/")
+
+    assert [%{name: "jars/udfs.jar"}] = batch.artifacts
+  end
+
+  test "a large blob keeps the prefix through the chunked path", %{session: session} do
+    blob = :crypto.strong_rand_bytes(@chunk + 1)
+
+    assert [%{payload: {:begin_chunk, begin_chunk}} | _chunks] =
+             Client.artifact_requests(session, [{"big.jar", blob}], "jars/")
+
+    assert begin_chunk.name == "jars/big.jar"
+  end
 end

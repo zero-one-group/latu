@@ -599,6 +599,29 @@ defmodule Latu.Client do
     end
   end
 
+  @doc """
+  Put a jar on the session, under `AddArtifacts`'s `jars/` prefix.
+
+  One client-streaming call, chunked as `cache_artifacts/2` is: at or under 32 KiB the jar rides
+  in a batch, larger it is split behind a `BeginChunkedArtifact`. The server routes a `jars/`
+  artifact to `sparkContext.addJar`, so a class in it resolves by name for the rest of the
+  session.
+
+  `name` is the artifact's identity rather than a hash of its bytes, and `ArtifactManager` draws
+  two rules from that: re-sending **identical** bytes under a name the session already holds is
+  a silent no-op, and different bytes under that name are refused with `ARTIFACT_ALREADY_EXISTS`.
+  A jar cannot be replaced in a live session.
+  """
+  @spec add_jar(Session.t(), String.t(), binary()) :: {:ok, Session.t()} | {:error, Error.t()}
+  def add_jar(%Session{channel: nil}, _name, _contents) do
+    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
+  end
+
+  def add_jar(%Session{} = session, name, contents)
+      when is_binary(name) and is_binary(contents) do
+    add_artifacts(session, [{name, contents}], "jars/")
+  end
+
   defp sha256(blob), do: :crypto.hash(:sha256, blob) |> Base.encode16(case: :lower)
 
   # One artifact per hash the server lacks, first blob wins on duplicates.
@@ -634,10 +657,12 @@ defmodule Latu.Client do
     end
   end
 
-  defp add_artifacts(%Session{} = session, []), do: {:ok, session}
+  defp add_artifacts(session, artifacts, prefix \\ "cache/")
 
-  defp add_artifacts(%Session{} = session, artifacts) do
-    requests = artifact_requests(session, artifacts)
+  defp add_artifacts(%Session{} = session, [], _prefix), do: {:ok, session}
+
+  defp add_artifacts(%Session{} = session, artifacts, prefix) do
+    requests = artifact_requests(session, artifacts, prefix)
 
     call = fn ->
       stream = Stub.add_artifacts(session.channel, timeout: session.timeout)
@@ -665,32 +690,37 @@ defmodule Latu.Client do
   @artifact_chunk_size 32 * 1024
 
   @doc false
-  # The AddArtifactsRequest sequence for `{hash, blob}` pairs — pure, so the wire shape is
-  # testable with no server. Small blobs pack into Batch requests up to the chunk size; a
-  # larger blob flushes the batch and streams as BeginChunkedArtifact + 32 KiB chunks,
-  # mirroring PySpark's _add_artifacts.
-  def artifact_requests(%Session{} = session, artifacts) do
+  # The AddArtifactsRequest sequence for `{name, blob}` pairs under one prefix — pure, so the
+  # wire shape is testable with no server. Small blobs pack into Batch requests up to the chunk
+  # size; a larger blob flushes the batch and streams as BeginChunkedArtifact + 32 KiB chunks,
+  # mirroring PySpark's _add_artifacts. The prefix is the artifact's kind and the server routes
+  # on it: `cache/` for a blob a plan references by hash, `jars/` for `sparkContext.addJar`.
+  def artifact_requests(session, artifacts, prefix \\ "cache/")
+
+  def artifact_requests(%Session{} = session, artifacts, prefix) do
     {requests, batch, _size} =
-      Enum.reduce(artifacts, {[], [], 0}, fn {hash, blob}, {requests, batch, size} ->
+      Enum.reduce(artifacts, {[], [], 0}, fn {name, blob}, {requests, batch, size} ->
         cond do
           byte_size(blob) > @artifact_chunk_size ->
-            {requests ++ flush_batch(session, batch) ++ chunked_requests(session, hash, blob), [],
+            {requests ++
+               flush_batch(session, batch) ++ chunked_requests(session, prefix, name, blob), [],
              0}
 
           size + byte_size(blob) > @artifact_chunk_size ->
-            {requests ++ flush_batch(session, batch), [single(hash, blob)], byte_size(blob)}
+            {requests ++ flush_batch(session, batch), [single(prefix, name, blob)],
+             byte_size(blob)}
 
           true ->
-            {requests, batch ++ [single(hash, blob)], size + byte_size(blob)}
+            {requests, batch ++ [single(prefix, name, blob)], size + byte_size(blob)}
         end
       end)
 
     requests ++ flush_batch(session, batch)
   end
 
-  defp single(hash, blob) do
+  defp single(prefix, name, blob) do
     %Proto.AddArtifactsRequest.SingleChunkArtifact{
-      name: "cache/" <> hash,
+      name: prefix <> name,
       data: %Proto.AddArtifactsRequest.ArtifactChunk{data: blob, crc: :erlang.crc32(blob)}
     }
   end
@@ -703,11 +733,11 @@ defmodule Latu.Client do
     ]
   end
 
-  defp chunked_requests(%Session{} = session, hash, blob) do
+  defp chunked_requests(%Session{} = session, prefix, name, blob) do
     [first | rest] = chunk_binary(blob)
 
     begin = %Proto.AddArtifactsRequest.BeginChunkedArtifact{
-      name: "cache/" <> hash,
+      name: prefix <> name,
       total_bytes: byte_size(blob),
       num_chunks: 1 + length(rest),
       initial_chunk: %Proto.AddArtifactsRequest.ArtifactChunk{

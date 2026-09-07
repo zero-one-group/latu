@@ -3,6 +3,20 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.4.0 — 2026-09-07
+
+One verb. Additive; no migration.
+
+**`Latu.add_jar/3`** puts a jar on the session, so a class in it resolves by name for the rest
+of it. `AddArtifacts` under a `jars/` prefix routes to `sparkContext.addJar`, and Latu already
+had the whole chunked upload path — 32 KiB chunks, CRC, batching — pointed at `cache/`; this
+threads the prefix through it. Latu still ships no code of its own and does no local file IO:
+the jar is bytes you hand it, under a name.
+
+Two server rules the docs now state: re-sending identical bytes under a name the session holds
+is a no-op, and different bytes under that name are refused — a jar cannot be replaced in a
+live session. `Latu.sql(session, "LIST JARS")` shows what a session holds.
+
 ## 0.3.0 — 2026-09-07
 
 Tensors out of a result, and a round of correctness fixes. Everything here is additive; no

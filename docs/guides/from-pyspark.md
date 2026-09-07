@@ -180,8 +180,9 @@ was proposed, and each one lost to a rung above it. `docs/decisions.md` has the 
 ## Things that are deliberately not here
 
 **MLlib and structured streaming** are separate packages, not omissions — a streaming query is
-a lifecycle Latu does not own, and ML has no oracle to check its 103 operators against. `Latu`'s
-moduledoc states the rule; `docs/deviations.md` lists what is missing.
+a lifecycle Latu does not own, and MLlib is a surface of its own, with a model cache and an
+on-disk format that have nothing to do with the DataFrame API. `Latu`'s moduledoc states the
+rule; `docs/deviations.md` lists what is missing.
 
 **UDFs written in Elixir** cannot exist — Spark Connect offers no client in any language a path
 to them. *Calling* a UDF that is already registered works fine: `Latu.Column.fun/3` sends the

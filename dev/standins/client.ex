@@ -44,9 +44,11 @@ defmodule Latu.Client do
   end
 
   def watched(responses, _opts), do: responses
+  def retrying(_name, _session, call), do: call.()
   def get_configs(session, _keys), do: {:ok, %{}, session}
   def config(session, _op), do: {:ok, [], session}
   def cache_artifacts(session, _blobs), do: {:ok, [], session}
-  def artifact_requests(_session, _artifacts), do: []
+  def add_jar(session, _name, _contents), do: {:ok, session}
+  def artifact_requests(_session, _artifacts, _prefix \\ "cache/"), do: []
   def responses(_session, _plan), do: []
 end

@@ -149,16 +149,17 @@ the deviation is recorded:
   **checkpoint is a server-side resource** with `release/1` to free it.
 - **It has no client-side type model.** A schema is Spark's own `simpleString`, and a
   `DataType` comes from `Latu.parse_ddl_type/2` — the server parses it.
-- **No UDFs in Elixir, and Latu ships no jars.** Spark Connect has no path for client-side
-  code. But a function already registered on the session is callable by name —
+- **No UDFs in Elixir, and Latu ships no Elixir code to the server.** Spark Connect has no path
+  for client-side code. But a function already registered on the session is callable by name —
   `Latu.Column.fun("my_udf", [:price])` — whether a SQL UDF, a Hive UDF or a Java class put it
-  there, and `CREATE FUNCTION` through `Latu.sql/3` registers one. Otherwise: SQL expressions,
-  and the ~500 built-ins in `Latu.Functions`.
+  there, and `CREATE FUNCTION` through `Latu.sql/3` registers one. `Latu.add_jar/3` is how a jar
+  gets there in the first place: bytes you hand it, under a name, session-scoped. Otherwise: SQL
+  expressions, and the ~500 built-ins in `Latu.Functions`.
 - **Structured streaming and MLlib are separate packages, for different reasons.** Latu hands
   out resources and never keeps them, and the test is whether one can be honestly bracketed: a
   checkpoint can (`with_checkpoint/3`), a streaming query cannot, because it runs after you
-  stop looking. ML is excluded on verification instead — its 103 operators' parameters are
-  nowhere machine-readable, so nothing could check them the way plans are checked.
+  stop looking. MLlib is separate on surface instead — a server-side model cache, Spark's
+  on-disk model format and its own operator registry, none of which the DataFrame API touches.
 
 ## Observability
 
