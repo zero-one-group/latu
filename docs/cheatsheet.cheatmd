@@ -151,6 +151,7 @@ Called qualified, the way `Enum` is.
 | `show/2` | Print the table Spark renders, and return `:ok`. **+ !** |
 | `storage_level/1` | How the server is storing this frame, if at all. **+ !** |
 | `stream/2` | The result as a lazy stream of `Explorer.DataFrame`s, one per Arrow batch. |
+| `stream_nx/2` | A lazy stream of `to_nx/2`'s tensors, one map per Arrow batch. |
 | `summary/2` | Summary statistics: one row per statistic, one column per column Spark can… |
 | `tail/3` | The last `count` rows, as maps. **+ !** |
 | `take/3` | The first `count` rows, as maps — `limit/2` then `collect/2`, as in PySpark. **+… |
@@ -159,6 +160,7 @@ Called qualified, the way `Enum` is.
 | `to_explorer/2` | The result as one `Explorer.DataFrame`. **+ !** |
 | `to_explorer_with_metrics/2` | `to_explorer/2`, and the metrics `observe/3` asked for. **+ !** |
 | `to_html/2` | The table `show/2` prints, as an HTML string. **+ !** |
+| `to_nx/2` | The result as `Nx` tensors, one per column. **+ !** |
 | `tree_string/2` | The schema tree as a string, where `print_schema/2` prints it. **+ !** |
 | `unpersist/2` | Drop the server's cache of this frame, and hand it back. **+ !** |
 | `write/2` | Write to a path. **+ !** |

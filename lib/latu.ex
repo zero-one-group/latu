@@ -2960,4 +2960,59 @@ defmodule Latu do
   @doc "Like `to_arrow/2`, raising on failure."
   @spec to_arrow!(DataFrame.t(), keyword()) :: [binary()]
   defdelegate to_arrow!(df, opts \\ []), to: DataFrame
+
+  @doc """
+  The result as `Nx` tensors, one per column.
+
+  Bypasses the Explorer decoder and the schema guard, exactly as `to_arrow/2` does — which is
+  what makes a `Vector` column readable here when `collect/2` and `to_explorer/2` refuse it.
+
+  A numeric column with no nulls becomes a 1-D tensor; a column of equal-length numeric lists,
+  or of dense `Vector`s, becomes one `{rows, width}` tensor. Nulls, strings, booleans, ragged
+  lists and sparse vectors are refused by name.
+
+  Unbounded, like `collect/2`. Bound the plan, or use `stream_nx/2` for a result too large to
+  hold.
+
+  ## Options
+
+    * `:columns` — keep only these columns, by name. Pruning copies, because an Arrow buffer is
+      a slice of the whole batch and would otherwise hold the rest alive. Defaults to `nil`,
+      every column.
+    * `:progress` — as `collect/2` describes. Defaults to `nil`.
+
+  ## Examples
+
+      {:ok, tensors} = Latu.to_nx(df)
+      {:ok, %{"features" => t}} = Latu.to_nx(scored, columns: ["features"])
+
+  Needs the optional `:nx` dependency. See `Latu.DataFrame.to_nx/2`.
+  """
+  @spec to_nx(DataFrame.t(), keyword()) ::
+          {:ok, %{String.t() => term()}} | {:error, Error.t()}
+  defdelegate to_nx(df, opts \\ []), to: DataFrame
+
+  @doc "Like `to_nx/2`, raising on failure."
+  @spec to_nx!(DataFrame.t(), keyword()) :: %{String.t() => term()}
+  defdelegate to_nx!(df, opts \\ []), to: DataFrame
+
+  @doc """
+  A lazy stream of `to_nx/2`'s tensors, one map per Arrow batch.
+
+  What `stream/2` is for Explorer. The tensors are per batch, so stacking them is the caller's
+  business — `to_nx/2` is the one that concatenates. Raises `Latu.Error` on failure.
+
+  ## Options
+
+    * `:columns` — as `to_nx/2` describes. Defaults to `nil`.
+    * `:progress` — as `collect/2` describes. Defaults to `nil`.
+
+  ## Examples
+
+      df |> Latu.stream_nx(columns: ["features"]) |> Enum.map(&Nx.sum(&1["features"]))
+
+  See `Latu.DataFrame.stream_nx/2`.
+  """
+  @spec stream_nx(DataFrame.t(), keyword()) :: Enumerable.t()
+  defdelegate stream_nx(df, opts \\ []), to: DataFrame
 end

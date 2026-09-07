@@ -1849,6 +1849,71 @@ defmodule Latu.DataFrame do
   @spec to_arrow!(t(), keyword()) :: [binary()]
   def to_arrow!(%__MODULE__{} = df, opts \\ []), do: unwrap!(to_arrow(df, opts))
 
+  @doc """
+  The result as `Nx` tensors, one per column.
+
+  Bypasses the Explorer decoder and the schema guard, as `to_arrow/2` does, and for the same
+  reason: these bytes are read by `Latu.Result.Arrow` rather than by Polars, and what Polars
+  cannot take is not this path's concern. That is what makes a `Vector` column readable here
+  when `collect/2` and `to_explorer/2` both refuse it.
+
+  Two shapes decode. A numeric column with no nulls becomes a 1-D tensor, and a column of
+  equal-length numeric lists — or of dense `Vector`s — becomes one `{rows, width}` tensor.
+  Anything else is refused by name: nulls, strings, booleans, ragged lists, sparse vectors.
+
+  **Unbounded**, like `collect/2` and `to_arrow/2`: bound the plan, or use `stream_nx/2`.
+
+      {:ok, %{"features" => t}} = Latu.to_nx(scored, columns: ["features"])
+
+  Needs the optional `:nx` dependency; without it this says so rather than failing obscurely.
+  """
+  @spec to_nx(t(), keyword()) :: {:ok, %{String.t() => term()}} | {:error, Error.t()}
+  def to_nx(%__MODULE__{} = df, opts \\ []) do
+    opts = Keyword.validate!(opts, progress: nil, columns: nil)
+
+    with {:ok, batches, _execution} <-
+           Client.execute(df.session, Plan.new(df.plan), watch(opts)) do
+      tensors(Enum.map(batches, & &1.data), opts)
+    end
+  end
+
+  @doc "Like `to_nx/2`, raising on failure."
+  @spec to_nx!(t(), keyword()) :: %{String.t() => term()}
+  def to_nx!(%__MODULE__{} = df, opts \\ []), do: unwrap!(to_nx(df, opts))
+
+  @doc """
+  A lazy stream of `to_nx/2`'s tensors, one map per Arrow batch.
+
+  Backpressure for results too large to hold, as `stream/2` is for Explorer. Each batch decodes
+  on its own, so the tensors are per batch and stacking them is the caller's business — that is
+  the difference from `to_nx/2`, which concatenates. Raises `Latu.Error` on failure, since an
+  enumeration has no way to return one.
+
+      df |> Latu.stream_nx(columns: ["features"]) |> Enum.map(&Nx.sum(&1["features"]))
+  """
+  @spec stream_nx(t(), keyword()) :: Enumerable.t()
+  def stream_nx(%__MODULE__{} = df, opts \\ []) do
+    opts = Keyword.validate!(opts, progress: nil, columns: nil)
+
+    df.session
+    |> Client.responses(Plan.new(df.plan))
+    |> Client.watched(watch(opts))
+    |> Stream.flat_map(fn
+      {:ok, batch} ->
+        case tensors([batch.data], opts) do
+          {:ok, decoded} -> [decoded]
+          {:error, error} -> raise error
+        end
+
+      {:error, error} ->
+        raise error
+
+      # The schema guard is deliberately not run here; see `to_nx/2`.
+      _progress_or_schema_or_done ->
+        []
+    end)
+  end
+
   # =============================================
   # Observed metrics
   # =============================================
@@ -2060,6 +2125,22 @@ defmodule Latu.DataFrame do
       {:ok, nil, _execution} -> {:error, Error.new(:decode, "the server sent no batches at all")}
       {:ok, frame, execution} -> {:ok, frame, execution}
       {:error, _} = error -> error
+    end
+  end
+
+  # `:nx` is optional, so `Latu.Result.Nx` may not exist at all, and refusing by name beats a
+  # `NoSuchModule` from three frames down. The call goes through `apply/3` on purpose: a direct
+  # one is a compile-time warning in a project that did not take the dependency, and this
+  # module is compiled by every one of them.
+  defp tensors(binaries, opts) do
+    if Code.ensure_loaded?(Result.Nx) do
+      case apply(Result.Nx, :decode, [binaries, [columns: opts[:columns]]]) do
+        {:ok, decoded} -> {:ok, decoded}
+        {:error, message} -> {:error, Error.new(:decode, message)}
+      end
+    else
+      {:error,
+       Error.new(:decode, "to_nx/2 needs the optional :nx dependency; add it to your deps")}
     end
   end
 
