@@ -82,6 +82,11 @@ def cases() -> dict[str, pa.Table]:
             {"features": vector_udt([[1.5, 2.5], [0.5, 3.5]], dense=False)}
         ),
         "doubles_with_null": pa.table({"v": pa.array([1.0, None, 3.0], pa.float64())}),
+        # Arrow allows one name twice; a Spark join whose sides share a non-key name sends it.
+        "duplicate_names": pa.Table.from_arrays(
+            [pa.array([1.0, 2.0], pa.float64()), pa.array([10.0, 20.0], pa.float64())],
+            names=["v", "v"],
+        ),
         "strings": pa.table({"v": pa.array(["a", "b"], pa.string())}),
         "booleans": pa.table({"v": pa.array([True, False, True], pa.bool_())}),
         # A schema and no batch at all, which pyarrow writes for an empty table and Spark does

@@ -120,5 +120,11 @@ defmodule Latu.Result.NxTest do
       assert {:error, message} = Tensors.decode([stream("empty")])
       assert message =~ "no batches at all"
     end
+
+    test "two columns of one name, which a name-keyed map would silently halve" do
+      assert {:error, message} = Tensors.decode([stream("duplicate_names")])
+      assert message =~ "more than one column named v"
+      assert message =~ "select/2"
+    end
   end
 end

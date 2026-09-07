@@ -503,6 +503,13 @@ The message names `use_ssl=true` and does not echo the token.
 An execution the server never marked complete is refused rather than returned short. Spark's own
 `spark-connect-go` truncates here.
 
+### `df.collect()` with two columns of one name → error naming the column
+
+PySpark's `Row` repeats the name and `toPandas()` repeats the column; Polars cannot hold one, and
+panics rather than saying so. Latu refuses before decoding and names the fix: aliases in
+`select/2`, or `rename/2` positionally. `to_nx/2` refuses too, since its tensors are keyed by
+name; `to_arrow/2` still hands the bytes over.
+
 ### `%NaiveDateTime{}` converted using the client's timezone → Spark's `timestamp_ntz`, no timezone applied
 
 PySpark cannot express a zoneless literal, so it silently uses the client machine's zone. Elixir

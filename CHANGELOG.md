@@ -3,7 +3,10 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
-## Unreleased
+## 0.3.0 — 2026-09-07
+
+Tensors out of a result, and the only way to read an MLlib `Vector` column into Elixir. Everything
+here is additive; no migration.
 
 **`Latu.to_nx/2`, `to_nx!/2` and `stream_nx/2`** turn a result into `Nx` tensors. A numeric
 column with no nulls becomes a 1-D tensor whose binary *is* the Arrow buffer — no copy for a
@@ -15,6 +18,11 @@ no SQL type, so `collect/2` and `to_explorer/2` both refuse it, while the Arrow 
 its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader — the IPC
 streaming format, no dependency — and `Latu.Result.Nx` the mapping, behind the now-optional
 `:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
+
+**A result with two columns of one name is refused, naming the column.** Polars panics on it
+inside its IPC reader — `:nif_panicked`, naming nothing — which is what a join whose sides share
+a non-key name used to produce. `collect/2`, `to_explorer/2`, `stream/2` and `to_nx/2` now return
+a `Latu.Error` that says which column, and to alias them apart or `rename/2`. No migration.
 
 **`Latu.disconnect/2` closes the socket within a second.** Gun waited its default 15 s for a
 close the Spark server never sends, so a client that connects per unit of work leaked sockets
