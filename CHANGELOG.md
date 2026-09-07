@@ -19,6 +19,12 @@ its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader �
 streaming format, no dependency — and `Latu.Result.Nx` the mapping, behind the now-optional
 `:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
 
+**`"t.*"` is a star, and `col(df, "*")` is a tagged one.** `select(df, "t.*")` sent a column
+called `t.*`, which Spark cannot resolve; it is now `UnresolvedStar` with the target, as
+PySpark's `col` reads it, in every name and expression position (`:"t.*"` too). `Latu.col(df,
+"*")` is every column of that frame — `df["*"]` — which is how one side of a join stays whole.
+No migration.
+
 **A result with two columns of one name is refused, naming the column.** Polars panics on it
 inside its IPC reader — `:nif_panicked`, naming nothing — which is what a join whose sides share
 a non-key name used to produce. `collect/2`, `to_explorer/2`, `stream/2` and `to_nx/2` now return

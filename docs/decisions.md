@@ -1299,3 +1299,18 @@ the duplicate through (`Row` repeats the name, pandas repeats the column); Explo
 the fix — aliases in `select/2`, or `rename/2` positionally. `Latu.Result.Nx` refuses it too,
 for a different reason: its tensors are keyed by name, so the second column vanished in silence.
 `to_arrow/2` hands the bytes over as ever.
+\n
+## 2026-09-07 — A name ending in `.*` is a star, and a tagged star has no target
+
+PySpark's `col` reads three shapes: `"*"` is `UnresolvedStar`, `"t.*"` is `UnresolvedStar` with
+the target — suffix included, because the server strips it itself and refuses a target without
+it — and anything else a column reference. Latu read only the first, so `select(df, "t.*")`
+after `as/2` sent a column called `t.*` and failed `UNRESOLVED_COLUMN`. `Plan.col/1` now reads
+all three, and every coercion point follows it: `to_name/1`, `to_expr/1` on `:*`,
+`Latu.Column.col/1`. `col(df, "*")` is PySpark's `df["*"]`, the star tagged with the frame's
+`plan_id`. A qualified star cannot be tagged — `transformUnresolvedStar` takes a target or a
+`plan_id` and throws on both — so `col(df, "t.*")` is refused here rather than there.
+
+`F.count(:*)` sends `count(*)` as it is. PySpark rewrites `count(col("*"))` to `count(1)`
+client-side yet sends the star for `count("*")`, and Catalyst's `expandStarExpression` turns
+either into `count(1)`; an integration test pins that rows with nulls are counted.

@@ -48,6 +48,49 @@ defmodule Latu.Integration.RelationsTest do
     end
   end
 
+  describe "a star" do
+    test "qualified by an alias keeps one side of a join", %{session: session} do
+      left = session |> Latu.range(3) |> Latu.as("l")
+
+      right =
+        session
+        |> Latu.range(3)
+        |> Latu.with_columns(sq: Column.multiply(:id, :id))
+        |> Latu.as("r")
+
+      rows =
+        left
+        |> Latu.join(right, on: Column.equal(Latu.col(left, :id), Latu.col(right, :id)))
+        |> Latu.select("r.*")
+        |> Latu.sort(:id)
+        |> Latu.collect!()
+
+      assert rows == [%{id: 0, sq: 0}, %{id: 1, sq: 1}, %{id: 2, sq: 4}]
+    end
+
+    test "tagged with a frame is every column of that frame", %{session: session} do
+      left = Latu.range(session, 2)
+      right = session |> Latu.range(2) |> Latu.with_columns(sq: Column.multiply(:id, :id))
+
+      rows =
+        left
+        |> Latu.join(right, on: Column.equal(Latu.col(left, :id), Latu.col(right, :id)))
+        |> Latu.select(Latu.col(right, "*"))
+        |> Latu.sort(:id)
+        |> Latu.collect!()
+
+      assert rows == [%{id: 0, sq: 0}, %{id: 1, sq: 1}]
+    end
+
+    test "count(*) counts rows, nulls and all", %{session: session} do
+      # Catalyst rewrites count(*) to count(1) itself. Had it expanded the star to count(a, b)
+      # instead, a row with a null in it would not count.
+      df = Latu.create_dataframe!(session, [a: [1, nil], b: [nil, 2]], schema: "a INT, b INT")
+
+      assert df |> Latu.agg(n: F.count(:*)) |> Latu.collect() == {:ok, [%{n: 2}]}
+    end
+  end
+
   describe "metadata_column/2" do
     test "a file source carries _metadata, which the schema does not list", %{people: people} do
       refute "_metadata" in Latu.columns!(people)
