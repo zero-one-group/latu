@@ -31,6 +31,33 @@ defmodule Latu.DataFrameTest do
       assert_wire(Latu.select(Latu.range(session, 10), :*), "project_star")
     end
 
+    test "reads t.* as every column of one relation, the target kept whole", %{
+      session: session
+    } do
+      df = session |> Latu.range(10) |> Latu.as("t")
+
+      assert_wire(Latu.select(df, "t.*"), "project_qualified_star")
+      assert_wire(Latu.select(df, :"t.*"), "project_qualified_star")
+    end
+
+    test "col/2 with * is every column of that frame, tagged like df[\"*\"]", %{
+      session: session
+    } do
+      df = Latu.range(session, 10)
+
+      assert_wire(Latu.select(df, Latu.col(df, "*")), "project_tagged_star")
+    end
+
+    test "a qualified star cannot be tagged, and the refusal says what can", %{
+      session: session
+    } do
+      df = Latu.range(session, 10)
+
+      assert_raise ArgumentError, ~r/takes a star's target or its plan_id/, fn ->
+        apply(Latu, :col, [df, "t.*"])
+      end
+    end
+
     test "names a trailing keyword's expression", %{session: session} do
       df = Latu.select(Latu.range(session, 10), id_plus_1: Column.add(:id, 1))
 

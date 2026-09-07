@@ -1631,21 +1631,32 @@ defmodule Latu.Plan do
   # =============================================
 
   @doc """
-  A column reference.
+  A column reference — or every column, for `"*"` and for a name ending in `.*`.
 
   Unresolved: the server matches it against the plan it is used in, so a name that is not there
-  fails at analysis rather than here.
+  fails at analysis rather than here. `"*"` and `"t.*"` are `UnresolvedStar`, as PySpark's `col`
+  reads them; a column reference to `*` would be a silently different node.
   """
   @spec col(String.t() | atom()) :: Proto.Expression.t()
   def col(name) do
-    # PySpark sets is_metadata_column explicitly, so it is present on the wire. Leaving it nil
-    # is not the same message, and the golden tests say so.
-    attribute = %Proto.Expression.UnresolvedAttribute{
-      unparsed_identifier: identifier(name),
+    name = identifier(name)
+
+    cond do
+      name == "*" -> star()
+      String.ends_with?(name, ".*") -> star(name)
+      true -> attribute(name)
+    end
+  end
+
+  # PySpark sets is_metadata_column explicitly, so it is present on the wire. Leaving it nil
+  # is not the same message, and the golden tests say so.
+  defp attribute(name, fields \\ []) do
+    base = %Proto.Expression.UnresolvedAttribute{
+      unparsed_identifier: name,
       is_metadata_column: false
     }
 
-    expression({:unresolved_attribute, attribute})
+    expression({:unresolved_attribute, struct!(base, fields)})
   end
 
   @doc """
@@ -1656,12 +1667,25 @@ defmodule Latu.Plan do
   tree is refused by Spark, hoisted or not**: the analyser searches downward from the operator,
   so a relation in `WithRelations.references` is never found (`docs/decisions.md`, M9.1). The
   reference that does resolve across frames is a subquery — `Latu.Subquery`.
+
+  `col("*", relation)` is every column of that relation, PySpark's `df["*"]`. A qualified star
+  cannot be tagged: the server takes a target or a `plan_id`, never both.
   """
   @spec col(String.t() | atom(), relation()) :: expression()
   def col(name, %Proto.Relation{common: %{plan_id: id}}) do
-    {:unresolved_attribute, attribute} = col(name).expr_type
+    case col(name).expr_type do
+      {:unresolved_attribute, attribute} ->
+        expression({:unresolved_attribute, %{attribute | plan_id: id}})
 
-    expression({:unresolved_attribute, %{attribute | plan_id: id}})
+      {:unresolved_star, %{unparsed_target: nil} = star} ->
+        expression({:unresolved_star, %{star | plan_id: id}})
+
+      {:unresolved_star, %{unparsed_target: target}} ->
+        raise ArgumentError,
+              "#{inspect(target)} cannot be tagged with a relation: the server takes a star's " <>
+                "target or its plan_id, not both; use col(#{inspect(target)}), or " <>
+                "col(\"*\", relation) for every column of the relation"
+    end
   end
 
   @doc """
@@ -1687,10 +1711,8 @@ defmodule Latu.Plan do
   `col/2` with `is_metadata_column` set, which is exactly how PySpark spells it.
   """
   @spec metadata_column(String.t() | atom(), relation()) :: Proto.Expression.t()
-  def metadata_column(name, %Proto.Relation{} = input) do
-    {:unresolved_attribute, attribute} = col(name, input).expr_type
-
-    expression({:unresolved_attribute, %{attribute | is_metadata_column: true}})
+  def metadata_column(name, %Proto.Relation{common: %{plan_id: id}}) do
+    attribute(identifier(name), plan_id: id, is_metadata_column: true)
   end
 
   @doc """
@@ -1698,6 +1720,21 @@ defmodule Latu.Plan do
   """
   @spec star() :: Proto.Expression.t()
   def star, do: expression({:unresolved_star, %Proto.Expression.UnresolvedStar{}})
+
+  @doc """
+  Every column of one relation, as `select("t.*")` means it.
+
+  The target travels whole, `.*` included: the server strips the suffix itself and refuses a
+  target without it.
+  """
+  @spec star(String.t()) :: Proto.Expression.t()
+  def star(target) when is_binary(target) do
+    if not String.ends_with?(target, ".*") do
+      raise ArgumentError, "a star's target ends in .*, like \"t.*\"; got #{inspect(target)}"
+    end
+
+    expression({:unresolved_star, %Proto.Expression.UnresolvedStar{unparsed_target: target}})
+  end
 
   @doc """
   A raw SQL expression, parsed by the server.
@@ -2123,13 +2160,12 @@ defmodule Latu.Plan do
   Here a binary is a column name, not a literal — the other half of PySpark's rule. `select(df,
   ["price", :suburb])` selects two columns.
 
-  `"*"` is every column, not a column called `*`. PySpark special-cases it the same way, and a
-  column reference to `*` would be a silently different node.
+  `"*"` is every column and `"t.*"` every column of one relation, not columns called `*` and
+  `t.*` — `col/1`'s reading, which is PySpark's.
   """
   @spec to_name(term()) :: expression()
   def to_name(%Proto.Expression{} = expr), do: expr
   def to_name(%Latu.Subquery{} = subquery), do: subquery
-  def to_name(name) when name in ["*", :*], do: star()
   def to_name(name), do: col(name)
 
   @doc """

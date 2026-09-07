@@ -877,6 +877,9 @@ defmodule Latu.DataFrame do
   (`CANNOT_RESOLVE_DATAFRAME_COLUMN`), hoisted or not. Measured; `docs/decisions.md` (M9.1).
   For a value from another frame, use a subquery — `scalar/1`, `exists/1`, or
   `Latu.Column.isin/2` over a DataFrame.
+
+  `col(df, "*")` is every column of this frame and no other's — PySpark's `df["*"]`, and the
+  way to keep one side of a join whole.
   """
   @spec col(t(), String.t() | atom()) :: Plan.expression()
   def col(%__MODULE__{} = df, name), do: Plan.col(name, df.plan)

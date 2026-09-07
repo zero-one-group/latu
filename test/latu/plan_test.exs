@@ -272,6 +272,13 @@ defmodule Latu.PlanTest do
       assert Plan.to_name(:price) == Plan.col(:price)
     end
 
+    test "a star is a star in both positions, qualified or not" do
+      assert Plan.to_expr(:*) == Plan.star()
+      assert Plan.to_name("*") == Plan.star()
+      assert Plan.to_expr(:"t.*") == Plan.star("t.*")
+      assert Plan.to_name("t.*") == Plan.star("t.*")
+    end
+
     test "nil and booleans are literals, not columns named nil and true" do
       null = {:null, %Proto.DataType{kind: {:null, %Proto.DataType.NULL{}}}}
 
@@ -333,6 +340,14 @@ defmodule Latu.PlanTest do
       {:unresolved_attribute, attribute} = Plan.col("id").expr_type
 
       assert attribute.is_metadata_column == false
+    end
+
+    test "a star's target keeps its .*, and must have one" do
+      {:unresolved_star, star} = Plan.star("t.*").expr_type
+
+      assert star.unparsed_target == "t.*"
+
+      assert_raise ArgumentError, ~r/ends in \.\*/, fn -> apply(Plan, :star, ["t"]) end
     end
   end
 

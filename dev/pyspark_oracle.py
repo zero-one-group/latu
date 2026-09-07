@@ -41,6 +41,8 @@ FIXTURES: list[tuple[str, str]] = [
     ("project_cols", 'spark.range(10).select("id")'),
     ("project_expr", 'spark.range(10).select((F.col("id") + 1).alias("id_plus_1"))'),
     ("project_star", 'spark.range(10).select("*")'),
+    ("project_qualified_star", 'spark.range(10).alias("t").select("t.*")'),
+    ("project_tagged_star", '(lambda d: d.select(d["*"]))(spark.range(10))'),
     ("filter_gt", 'spark.range(10).filter(F.col("id") > 3)'),
     ("filter_and", 'spark.range(10).filter((F.col("id") > 3) & (F.col("id") < 8))'),
     ("filter_string_eq",
