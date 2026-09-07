@@ -5,8 +5,8 @@ remove; each such change is listed here with the migration in one line.
 
 ## 0.3.0 — 2026-09-07
 
-Tensors out of a result, and the only way to read an MLlib `Vector` column into Elixir. Everything
-here is additive; no migration.
+Tensors out of a result, and a round of correctness fixes. Everything here is additive; no
+migration.
 
 **`Latu.to_nx/2`, `to_nx!/2` and `stream_nx/2`** turn a result into `Nx` tensors. A numeric
 column with no nulls becomes a 1-D tensor whose binary *is* the Arrow buffer — no copy for a
@@ -19,43 +19,26 @@ its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader �
 streaming format, no dependency — and `Latu.Result.Nx` the mapping, behind the now-optional
 `:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
 
-**Every RPC retries on the session's `Latu.Retry`**, not only the result stream — PySpark's
-own behaviour — except the best-effort releases. A `RetryInfo` on an error makes it retryable
-whatever its status, with its delay as a floor under the backoff, capped by the new
-`max_server_retry_delay` (10 min); `%Latu.Error{}` gains `retry_delay`. A unary call's
-`[:latu, :retry, :attempt]` event carries `rpc` where an execution's carries `operation_id`.
-Smaller: a cleartext token is allowed to every loopback address, not four spellings of it, and
-an IPv6 literal host connects at all (`sc://[::1]:15002` crashed inside elixir-grpc);
-`SPARK_USER` precedes the OS user as the default `user_id`; `lit/1` refuses a non-UTF-8 binary
-and names Spark's `X'…'` literal; `true`/`false` are refused where a column name is taken
-instead of naming a column `"true"`. No migration.
+**Every RPC retries on the session's `Latu.Retry`**, not only the result stream — PySpark's own
+behaviour — except the best-effort releases. An error carrying a `RetryInfo` is retried whatever
+its status, its delay a floor under the backoff capped by the new `max_server_retry_delay`
+(10 min); `%Latu.Error{}` gains `retry_delay`, and a unary call's `[:latu, :retry, :attempt]`
+carries `rpc` where an execution's carries `operation_id`.
 
-**`Latu.error_details/2` restores the whole message.** The server abbreviates a gRPC status
-message to 2048 characters, so a long analysis error arrived cut short with `...`; the detail
-carries it whole, and the call now puts it on the error beside the causes. No migration.
-
-**`create_dataframe/3` matches a schema to the data by name.** The server applies a
-`LocalRelation` schema positionally and Latu sorts a row map's columns by key, so a schema in any
-other order silently put values under the wrong names. The data is now arranged to the schema's
-field names first (one `DDLParse` round trip; a JSON schema needs none); a schema sharing no
-name with the data still renames by position, and one that half matches is refused. A
-malformed schema now fails when the frame is built rather than at its first action. No
-migration.
-
-**`"t.*"` is a star, and `col(df, "*")` is a tagged one.** `select(df, "t.*")` sent a column
-called `t.*`, which Spark cannot resolve; it is now `UnresolvedStar` with the target, as
-PySpark's `col` reads it, in every name and expression position (`:"t.*"` too). `Latu.col(df,
-"*")` is every column of that frame — `df["*"]` — which is how one side of a join stays whole.
-No migration.
-
-**A result with two columns of one name is refused, naming the column.** Polars panics on it
-inside its IPC reader — `:nif_panicked`, naming nothing — which is what a join whose sides share
-a non-key name used to produce. `collect/2`, `to_explorer/2`, `stream/2` and `to_nx/2` now return
-a `Latu.Error` that says which column, and to alias them apart or `rename/2`. No migration.
-
-**`Latu.disconnect/2` closes the socket within a second.** Gun waited its default 15 s for a
-close the Spark server never sends, so a client that connects per unit of work leaked sockets
-for 15 s each — enough to hit an open-files limit at a few connections a second. No migration.
+**Fixed.** A result with two columns of one name is refused, naming the column, where Polars
+used to panic inside its IPC reader — a join whose sides share a non-key name was the usual way
+there. `select(df, "t.*")` is every column of `t`, not a column called `t.*`, and
+`Latu.col(df, "*")` is every column of that frame, as PySpark's `col` and `df["*"]` read them.
+`create_dataframe/3` matches a `schema:` to the data by name — the server applies it by position
+and row maps sort by key, so a schema in another order put values under the wrong names; a
+schema sharing no name still renames by position, a half match is refused, and a malformed one
+fails as the frame is built. `error_details/2` restores a message the server abbreviated to
+2048 characters. An IPv6 literal host connects (`sc://[::1]:15002` crashed inside elixir-grpc),
+and a cleartext token is allowed to every loopback address. `SPARK_USER` precedes the OS user as
+the default `user_id`; `lit/1` refuses a non-UTF-8 binary and names Spark's `X'…'`;
+`true`/`false` are refused where a column name is taken. `disconnect/2` closes the socket within
+a second — Gun waited 15 s for a close the Spark server never sends, enough to hit an open-files
+limit at a few connections a second.
 
 ## 0.2.0 — 2026-09-05
 

@@ -68,11 +68,12 @@ names the twin: a write consumes the frame, so its metrics would be produced and
 
 ## Bound the plan, not the action
 
-`Latu.collect/2`, `Latu.to_explorer/2` and `Latu.to_arrow/2` all bring the **whole** result back
-and none of them takes a row limit — Spark's `collect` takes no arguments either. To take part
-of a result, bound the plan: `df |> Latu.limit(10_000) |> Latu.to_explorer()`, or
-`Latu.take(df, 10_000)` for rows. For a result too large to hold, `Latu.stream/2` gives one
-`Explorer.DataFrame` per Arrow batch.
+`Latu.collect/2`, `Latu.to_explorer/2`, `Latu.to_arrow/2` and `Latu.to_nx/2` all bring the
+**whole** result back and none of them takes a row limit — Spark's `collect` takes no arguments
+either. To take part of a result, bound the plan:
+`df |> Latu.limit(10_000) |> Latu.to_explorer()`, or `Latu.take(df, 10_000)` for rows. For a
+result too large to hold, `Latu.stream/2` gives one `Explorer.DataFrame` per Arrow batch and
+`Latu.stream_nx/2` one map of tensors.
 
 ## Errors tell you what went wrong
 

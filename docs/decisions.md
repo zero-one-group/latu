@@ -1291,89 +1291,66 @@ wants.
 
 ## 2026-09-07 — Two columns of one name are refused before decoding
 
-Polars keys a frame by column name, so an Arrow batch that repeats one panics inside its IPC
-reader — the same nameless `:nif_panicked` the dtype guard exists for, and one Spark produces
-routinely: a join whose sides share a non-key name, or `SELECT 1 AS x, 2 AS x`. PySpark carries
-the duplicate through (`Row` repeats the name, pandas repeats the column); Explorer cannot.
-`Latu.Result.Schema.check/1` refuses it from the same latched `DataType`, naming the column and
-the fix — aliases in `select/2`, or `rename/2` positionally. `Latu.Result.Nx` refuses it too,
-for a different reason: its tensors are keyed by name, so the second column vanished in silence.
-`to_arrow/2` hands the bytes over as ever.
-\n
-## 2026-09-07 — A name ending in `.*` is a star, and a tagged star has no target
+Polars keys a frame by name, so a batch repeating one panics inside its IPC reader — the same
+nameless `:nif_panicked` the dtype guard exists for — and Spark produces it routinely: a join
+whose sides share a non-key name. PySpark carries the duplicate through; Explorer cannot, so
+`Latu.Result.Schema.check/1` refuses it from the latched `DataType`, naming the column and the
+fix (aliases in `select/2`, or `rename/2`). `Latu.Result.Nx` refuses it too: its tensors are
+keyed by name, so the second column vanished silently. `to_arrow/2` hands the bytes over as ever.
 
-PySpark's `col` reads three shapes: `"*"` is `UnresolvedStar`, `"t.*"` is `UnresolvedStar` with
-the target — suffix included, because the server strips it itself and refuses a target without
-it — and anything else a column reference. Latu read only the first, so `select(df, "t.*")`
-after `as/2` sent a column called `t.*` and failed `UNRESOLVED_COLUMN`. `Plan.col/1` now reads
-all three, and every coercion point follows it: `to_name/1`, `to_expr/1` on `:*`,
-`Latu.Column.col/1`. `col(df, "*")` is PySpark's `df["*"]`, the star tagged with the frame's
-`plan_id`. A qualified star cannot be tagged — `transformUnresolvedStar` takes a target or a
-`plan_id` and throws on both — so `col(df, "t.*")` is refused here rather than there.
+## 2026-09-07 — `"t.*"` is a star, and a tagged star has no target
 
-`F.count(:*)` sends `count(*)` as it is. PySpark rewrites `count(col("*"))` to `count(1)`
-client-side yet sends the star for `count("*")`, and Catalyst's `expandStarExpression` turns
-either into `count(1)`; an integration test pins that rows with nulls are counted.
-\n
+PySpark's `col` reads `"*"` as `UnresolvedStar`, a name ending in `.*` as `UnresolvedStar` with
+that target — suffix kept; the server strips it and refuses a target without it — and anything
+else as a column reference. `Plan.col/1` does the same, so every coercion point follows.
+`col(df, "*")` is `df["*"]`, the star tagged with the frame's `plan_id`; a qualified star cannot
+be tagged, since `transformUnresolvedStar` throws on a target and a `plan_id` together, so
+`col(df, "t.*")` is refused client-side. `F.count(:*)` sends `count(*)` as is: Catalyst's
+`expandStarExpression` turns it into `count(1)` — PySpark rewrites `count(col("*"))` client-side
+but sends the star for `count("*")` — and a test pins that null rows are counted.
+
 ## 2026-09-07 — `create_dataframe/3` arranges the data to the schema's names
 
-`transformLocalRelation` applies a schema as `toDF(names).to(schema)`: positionally, then a cast.
-Latu sorts a map's columns by key, so `[%{id: 1, name: "Ada"}]` with `schema: "name STRING, id
-INT"` put `1` under `name` and cast `"Ada"` to `INT` — two STRING columns would have swapped
-without any error. The docstring said so; PySpark indexes dict rows by field name, so it never
-could. Now the data is arranged to the schema before it ships: by name when the data's names
-are the schema's, by position when none are (a rename, the keyword-list form's old contract),
-refused with both lists when some are. Names come from one `DDLParse` round trip — the arm reads
-DDL only, so a JSON schema's names are decoded locally — which also means a malformed schema
-fails at `create_dataframe/3` instead of at the first action. One RPC on a call that already
-spends one on the session configs. `Latu.Result.names/1` and `arrange/2` keep the Explorer call
-inside the boundary.
-\n
+`transformLocalRelation` applies a schema as `toDF(names).to(schema)` — positionally — and a
+map's columns arrive sorted by key, so two STRING columns swapped without an error when the
+schema named them in another order; PySpark indexes dict rows by field name. The data is now
+arranged to the schema before it ships: by name when the data's names are the schema's, by
+position when none are (a rename), refused with both lists when some are. The names come from
+one `DDLParse` round trip — that arm reads DDL only, so a JSON schema's are decoded locally —
+which also fails a malformed schema at `create_dataframe/3` rather than at the first action.
+`Latu.Result.names/1` and `arrange/2` keep the Explorer call inside the boundary.
+
 ## 2026-09-07 — `error_details/2` restores the message the status abbreviated
 
 `SparkConnectService.extractErrorMessage` is `Utils.abbreviate(getMessage, 2048)`, so a long
-analysis message — one that quotes a long identifier or a long SQL fragment — arrives on the
-gRPC status cut to 2048 characters ending in `...`, and that is what `%Latu.Error{}` carries.
-`FetchErrorDetails` sets each error's `message` from `getMessage` whole, and PySpark's
-`convert_exception` takes its message from there whenever the detail is available. Latu now does
-the same on the explicit call: `error_details/2` puts the thrown error's message on the struct
-beside the causes. Nothing changes without the call, by the same reasoning that makes the fetch
-explicit; a short message is identical on both paths.
-\n
+analysis message reaches `%Latu.Error{}` cut to 2048 characters; `FetchErrorDetails` carries it
+whole, and PySpark's `convert_exception` reads it from there. The explicit call now does the
+same, putting the thrown error's message beside the causes. Nothing changes without the call, by
+the reasoning that made the fetch explicit.
+
 ## 2026-09-07 — Every RPC retries, `RetryInfo` counts, and four smaller alignments
 
-**Unary RPCs retry on the session's policy.** PySpark wraps every call in `Retrying`; Latu
-retried only the execution stream, so a transient `UNAVAILABLE` on `AnalyzePlan` or `Config`
-failed outright. `Client.retrying/3` now wraps every call that asks the server for something.
-Not `ExecutePlan`/`ReattachExecute` — `Latu.Client.Execution` owns those — and not the releases
-that are best effort: `ReleaseExecute` on the stream, and `ReleaseSession` inside
-`disconnect(release: true)`, which has a five-second budget to keep. Backing off blocks the
-caller's process, as the reattach path already does. The retry event carries `rpc` where an
-execution's carries `operation_id`.
+**Unary RPCs retry on the session's policy**, as PySpark's `Retrying` wraps every call;
+`Client.retrying/3` covers everything that asks the server for something. Not
+`ExecutePlan`/`ReattachExecute`, which `Latu.Client.Execution` owns, and not the best-effort
+releases — `ReleaseExecute` on the stream, `ReleaseSession` inside `disconnect(release: true)`
+with its five-second budget. Backing off blocks the caller's process, as the reattach path does.
 
-**A `RetryInfo` makes any status retryable, and its delay is a floor.** PySpark's
-`DefaultPolicy` third case; `Latu.Retry.retryable?/1` is now the one predicate, with
-`max_server_retry_delay` (10 min) capping the floor before jitter. Spark's own server never
-attaches one — `ErrorUtils`/`SparkConnectService` on 4.2 have no `RetryInfo` — so this is for
-a gateway in front of it. The old comment blaming elixir-grpc for not decoding the detail was
-wrong: `details` is the same `Any` list `ErrorInfo` is read from.
+**A `RetryInfo` makes any status retryable and its delay a floor**, capped at
+`max_server_retry_delay` (10 min) — PySpark's `DefaultPolicy` third case, now in
+`Latu.Retry.retryable?/1`, the one predicate. Spark's own server never attaches one (`ErrorUtils`
+on 4.2 has no `RetryInfo`); a gateway in front of it may. elixir-grpc does decode the detail: it
+is the same `Any` list `ErrorInfo` is read from.
 
-**Loopback is what the kernel keeps on the machine**: `localhost`, 127/8, `::1` in any
-spelling, and 127/8 as an IPv4-mapped address — parsed with `:inet.parse_address/1` rather than
-listed. PySpark checks the string `"localhost"` alone. Testing it found that an IPv6 literal
-never connected: `"host:port"` compatibility mode splits on colons, so the target takes
-elixir-grpc's `ipv6:[addr]:port` form when the host parses as one.
+**Loopback is what the kernel keeps on the machine** — `localhost`, 127/8, `::1`, and 127/8 as
+an IPv4-mapped address — parsed rather than listed; PySpark checks the string `"localhost"`.
+Testing it found that an IPv6 literal never connected: compatibility mode splits `"host:port"`
+on colons, so such a host takes elixir-grpc's `ipv6:[addr]:port` form.
 
-**`SPARK_USER` comes before the OS user** for the default `user_id`, PySpark's own order. The
-`user-agent` header stays unset: PySpark sends its agent only as `client_type`, so there was no
-parity to gain.
+**`SPARK_USER` precedes the OS user** for the default `user_id`, PySpark's order. No `user-agent`
+header: PySpark sends its agent only as `client_type`. **A binary literal must be UTF-8**: the
+proto field is a string and the server refuses invalid bytes opaquely; `lit/1` refuses first and
+names Spark's `X'…'`. **Booleans are refused wherever a name is taken.**
 
-**A binary literal must be UTF-8**: the proto field is a string and the server refuses invalid
-bytes with an opaque error; `lit/1` refuses first and names Spark's `X'…'` literal. **Booleans
-are refused wherever a name is taken**: they are atoms, and `to_name(true)` was a column called
-`"true"`.
-
-Not done: caching the `create_dataframe/3` config probe on the returned session. A caller
-rarely threads `df.session` back, so the saving would seldom land, and a cached threshold goes
-stale the moment `set_conf/3` moves it — SparkEx shipped exactly that bug. One round trip per
-call stays.
+Not done: caching the `create_dataframe/3` config probe on the returned session — a caller
+rarely threads `df.session` back, and a cached threshold goes stale when `set_conf/3` moves it.
