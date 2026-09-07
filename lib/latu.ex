@@ -171,8 +171,9 @@ defmodule Latu do
   **Most of what you want is already on the error**, with no round trip: the Spark error class,
   the SQLSTATE, the JVM class hierarchy, the message parameters and — when the server is
   configured to send one — a stack trace all arrive in the gRPC trailers. See `Latu.Error`.
-  This adds the one thing they do not carry: the **chain of causes**, root cause last, each
-  with its own frames.
+  This adds what they do not carry: the **chain of causes**, root cause last, each with its
+  own frames — and the **message whole**, where the gRPC status carries the server's
+  2048-character abbreviation of it.
 
   So it is an explicit call rather than something every failure pays for. PySpark fetches it
   eagerly on every error; a Latu action returns `{:error, _}` for expected refusals too, and

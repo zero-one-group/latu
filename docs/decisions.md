@@ -1328,3 +1328,14 @@ DDL only, so a JSON schema's names are decoded locally — which also means a ma
 fails at `create_dataframe/3` instead of at the first action. One RPC on a call that already
 spends one on the session configs. `Latu.Result.names/1` and `arrange/2` keep the Explorer call
 inside the boundary.
+\n
+## 2026-09-07 — `error_details/2` restores the message the status abbreviated
+
+`SparkConnectService.extractErrorMessage` is `Utils.abbreviate(getMessage, 2048)`, so a long
+analysis message — one that quotes a long identifier or a long SQL fragment — arrives on the
+gRPC status cut to 2048 characters ending in `...`, and that is what `%Latu.Error{}` carries.
+`FetchErrorDetails` sets each error's `message` from `getMessage` whole, and PySpark's
+`convert_exception` takes its message from there whenever the detail is available. Latu now does
+the same on the explicit call: `error_details/2` puts the thrown error's message on the struct
+beside the causes. Nothing changes without the call, by the same reasoning that makes the fetch
+explicit; a short message is identical on both paths.

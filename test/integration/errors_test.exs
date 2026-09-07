@@ -84,6 +84,20 @@ defmodule Latu.Integration.ErrorsTest do
       assert Enum.all?(filled.causes, &is_list(&1.stacktrace))
     end
 
+    test "restores a message the status abbreviated to 2048 characters", %{session: session} do
+      # The gRPC status message is `Utils.abbreviate(getMessage, 2048)`; the detail is whole.
+      long = String.duplicate("x", 3000)
+
+      {:error, error} =
+        session |> Latu.range(1) |> Latu.select(Latu.Column.col(long)) |> Latu.collect()
+
+      assert String.length(error.message) == 2048
+      assert String.ends_with?(error.message, "...")
+
+      assert {:ok, filled} = Latu.error_details(session, error)
+      assert filled.message =~ long
+    end
+
     test "the original error is unchanged apart from the causes", %{session: session} do
       {:error, error} = session |> Latu.range(5) |> Latu.select(:nope) |> Latu.collect()
 

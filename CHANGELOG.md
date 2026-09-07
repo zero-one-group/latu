@@ -19,6 +19,10 @@ its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader â€
 streaming format, no dependency â€” and `Latu.Result.Nx` the mapping, behind the now-optional
 `:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
 
+**`Latu.error_details/2` restores the whole message.** The server abbreviates a gRPC status
+message to 2048 characters, so a long analysis error arrived cut short with `...`; the detail
+carries it whole, and the call now puts it on the error beside the causes. No migration.
+
 **`create_dataframe/3` matches a schema to the data by name.** The server applies a
 `LocalRelation` schema positionally and Latu sorts a row map's columns by key, so a schema in any
 other order silently put values under the wrong names. The data is now arranged to the schema's
