@@ -179,13 +179,9 @@ was proposed, and each one lost to a rung above it. `docs/decisions.md` has the 
 
 ## Things that are deliberately not here
 
-**MLlib and structured streaming** are separate packages, not omissions, and for different
-reasons. Latu hands out resources and never keeps them, and the test is whether one can be
-honestly bracketed: a checkpoint can (`with_checkpoint/3`, the way `File.open/3` does it), and a
-streaming query cannot — it runs after you stop looking. ML is a fitted model, which brackets
-fine; what it lacks is an oracle, since its 103 operators' parameters appear nowhere
-machine-readable and every plan in Latu is checked against the one PySpark builds. `Latu`'s
-moduledoc states the first rule; `docs/deviations.md` lists what is missing.
+**MLlib and structured streaming** are separate packages, not omissions — a streaming query is
+a lifecycle Latu does not own, and ML has no oracle to check its 103 operators against. `Latu`'s
+moduledoc states the rule; `docs/deviations.md` lists what is missing.
 
 **UDFs written in Elixir** cannot exist — Spark Connect offers no client in any language a path
 to them. *Calling* a UDF that is already registered works fine: `Latu.Column.fun/3` sends the

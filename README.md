@@ -18,7 +18,7 @@ predecessor, is Javanese for *fire*.
 
 ```elixir
 def deps do
-  [{:latu, "~> 0.2"}]
+  [{:latu, "~> 0.3"}]
 end
 ```
 
@@ -83,7 +83,9 @@ higher-order functions that take an ordinary Elixir lambda. Subqueries reach acr
 **Results.** `show`, `collect` into maps, `count`, `take`/`first`/`head`/`tail`, `to_explorer`
 into an `Explorer.DataFrame`, a lazy `stream` of one frame per Arrow batch, `glimpse` for a wide
 frame, and raw Arrow — behind a schema guard that turns the types the decoder cannot represent
-into errors naming the column.
+into errors naming the column. `to_nx` reads the same bytes as `Nx` tensors instead, with no
+copy for a single batch, and is the one route to an MLlib `Vector` column: Spark describes one
+as a UDT with no SQL type, so every other reader refuses it.
 
 **Asking a frame about itself**, without running it: `schema`, `columns`, `dtypes`,
 `print_schema`, `explain`, `input_files`, `same_semantics`, `is_empty`, plus `cache`, `persist`
@@ -136,7 +138,7 @@ Results come out as Elixir data:
 #=> {:ok, [%{id: 0}, %{id: 1}]}
 
 {:ok, n} = Latu.count(df)
-{:ok, frame} = Latu.to_explorer(df)            # refuses past 100k rows unless told otherwise
+{:ok, frame} = Latu.to_explorer(df)            # unbounded, like toPandas: bound the plan
 df |> Latu.stream() |> Enum.each(&handle/1)    # lazy: one Explorer frame per Arrow batch
 ```
 

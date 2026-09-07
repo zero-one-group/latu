@@ -18,11 +18,9 @@ Both halt on the first failure and exit non-zero. `docker compose up -d spark-co
 starts the ordinary server on :15002; the second profile on :15003 runs with a five-second
 `senderMaxStreamDuration`, which is what makes the reattach tests mean anything.
 
-`mix fixtures` needs the oracle's Python venv, which `dev/README.md`'s one-time setup creates
-(`python3 -m venv dev/.venv`, then `dev/.venv/bin/pip install -r dev/requirements.txt`). The
-data files it writes are generated rather than committed, so the suite stays hermetic and
-carries no third-party data licence. `mix check` needs none of them; `mix check.all` refuses to
-start without them, naming this command.
+`mix fixtures` needs the oracle's venv. The data files it writes are generated rather than
+committed, so the suite stays hermetic and carries no third-party data licence. `mix check`
+needs none of them; `mix check.all` refuses to start without them, naming this command.
 
 Conventions — naming, the shapes a builder and an action return, how errors are worded, how a
 verb is documented — live in `CLAUDE.md`. Per-decision rationale is in `docs/decisions.md`, a
