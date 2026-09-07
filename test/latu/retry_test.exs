@@ -1,6 +1,7 @@
 defmodule Latu.RetryTest do
   use ExUnit.Case, async: true
 
+  alias Latu.Error
   alias Latu.Retry
 
   doctest Latu.Retry
@@ -13,7 +14,8 @@ defmodule Latu.RetryTest do
                max_backoff: 60_000,
                backoff_multiplier: 4.0,
                jitter: 500,
-               min_jitter_threshold: 2_000
+               min_jitter_threshold: 2_000,
+               max_server_retry_delay: 600_000
              } = Retry.new()
     end
 
@@ -80,6 +82,28 @@ defmodule Latu.RetryTest do
       retry = Retry.new(initial_backoff: 10, backoff_multiplier: 2, jitter: 0)
 
       assert Enum.map(0..3, &Retry.wait(retry, &1)) == [10, 20, 40, 80]
+    end
+
+    test "a server's delay is a floor under the backoff, capped at max_server_retry_delay" do
+      retry = Retry.new(jitter: 0)
+
+      assert Retry.wait(retry, 0, 3_000) == 3_000
+      assert Retry.wait(retry, 99, 3_000) == 60_000
+      assert Retry.wait(retry, 0, 3_600_000) == 600_000
+      assert Retry.wait(retry, 0, 0) == 50
+      assert Retry.wait(retry, 0, nil) == 50
+    end
+  end
+
+  describe "retryable?/1" do
+    test "UNAVAILABLE, a disconnected cursor, and anything carrying a RetryInfo" do
+      assert Retry.retryable?(Error.new(:rpc, "UNAVAILABLE", status: 14))
+      assert Retry.retryable?(Error.new(:rpc, "INVALID_CURSOR.DISCONNECTED", status: 13))
+      assert Retry.retryable?(Error.new(:rpc, "RESOURCE_EXHAUSTED", status: 8, retry_delay: 0))
+
+      refute Retry.retryable?(Error.new(:rpc, "INTERNAL: bad plan", status: 13))
+      refute Retry.retryable?(Error.new(:rpc, "RESOURCE_EXHAUSTED", status: 8))
+      refute Retry.retryable?(Error.new(:decode, "not the server's"))
     end
   end
 end

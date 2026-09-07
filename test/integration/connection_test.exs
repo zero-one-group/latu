@@ -66,6 +66,18 @@ defmodule Latu.Integration.ConnectionTest do
     refute match?({:error, %Error{message: "refusing" <> _}}, result)
   end
 
+  test "in every spelling the kernel keeps on the machine" do
+    for host <- ["127.0.0.2", "[::1]", "[0:0:0:0:0:0:0:1]", "[::ffff:127.0.0.1]"] do
+      result = Latu.connect("sc://#{host}:1/;token=s3cr3t", connect_timeout: 500)
+      refute match?({:error, %Error{message: "refusing" <> _}}, result), host
+    end
+  end
+
+  test "but not to a host that only looks local" do
+    assert {:error, %Error{message: "refusing" <> _}} =
+             Latu.connect("sc://127.0.0.1.example.com:1/;token=s3cr3t", connect_timeout: 500)
+  end
+
   test "spark_version/1 reports the server's version" do
     session = Latu.connect!(@url)
     assert {:ok, version} = Latu.spark_version(session)

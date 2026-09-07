@@ -18,11 +18,6 @@ defmodule Latu.Client.Execution do
   # The retry policy proper is a separate concern. See dev/README.md.
   @max_empty_reattaches 100
 
-  # gRPC status codes, spelled out because this module must not reference GRPC — see the
-  # layering test.
-  @unavailable 14
-  @internal 13
-
   # Spark reports a lost execution or session in the message, with no status code of its own to
   # match on. PySpark detects it the same way.
   @lost_handle ["INVALID_HANDLE.OPERATION_NOT_FOUND", "INVALID_HANDLE.SESSION_NOT_FOUND"]
@@ -143,15 +138,17 @@ defmodule Latu.Client.Execution do
       # The server has no record of this execution. If nothing had arrived yet, the original
       # ExecutePlan never landed and re-sending it under the same operation_id is safe.
       lost_handle?(error) and is_nil(execution.last_response_id) and budget ->
-        {{:restart, Retry.wait(retry, retries)}, %{execution | retries: retries + 1}}
+        wait = Retry.wait(retry, retries, error.retry_delay)
+        {{:restart, wait}, %{execution | retries: retries + 1}}
 
       # If responses had already arrived, they are gone and re-sending would duplicate the ones
       # that did. PySpark raises RESPONSE_ALREADY_RECEIVED here for the same reason.
       lost_handle?(error) ->
         {{:fail, unrecoverable(execution, error)}, execution}
 
-      budget and retryable?(error) ->
-        {{:reattach, Retry.wait(retry, retries)}, %{execution | retries: retries + 1}}
+      budget and Retry.retryable?(error) ->
+        wait = Retry.wait(retry, retries, error.retry_delay)
+        {{:reattach, wait}, %{execution | retries: retries + 1}}
 
       true ->
         {{:fail, give_up(execution, error)}, execution}
@@ -162,22 +159,13 @@ defmodule Latu.Client.Execution do
   # Retries
   # =============================================
 
-  # Which errors are retryable is PySpark's DefaultPolicy; how often and how long is the
-  # session's `Latu.Retry`. PySpark's third case — any error carrying RetryInfo metadata — is
-  # not covered: elixir-grpc does not decode that detail.
+  # Which errors are retryable, how often and how long is the session's `Latu.Retry`; the one
+  # case of its own here is a lost handle, which only an execution can have.
   defp policy(%__MODULE__{session: %Session{retry: %Retry{} = retry}}), do: retry
 
   defp lost_handle?(%Error{message: message}) do
     Enum.any?(@lost_handle, &String.contains?(message, &1))
   end
-
-  defp retryable?(%Error{status: @unavailable}), do: true
-
-  defp retryable?(%Error{status: @internal, message: message}) do
-    message =~ "INVALID_CURSOR.DISCONNECTED"
-  end
-
-  defp retryable?(%Error{}), do: false
 
   # Nothing had arrived, so the only way here is a spent budget.
   defp unrecoverable(%__MODULE__{last_response_id: nil} = execution, %Error{} = error) do

@@ -29,6 +29,8 @@ defmodule Latu.Error do
       send one. **Not** in `message/1`: a JVM trace is not what you want in a REPL, and it is
       one field away when you do.
     * `error_id` — the handle `Latu.error_details/2` fetches the full cause chain with.
+    * `retry_delay` — milliseconds the server asked the client to wait before trying again,
+      when it attached a `RetryInfo`; `nil` otherwise. Anything carrying one is retried.
     * `causes` — only populated by `Latu.error_details/2`. One entry per exception in the
       chain, root cause last. The same call restores a `message` the server abbreviated to
       2048 characters on the wire.
@@ -46,6 +48,7 @@ defmodule Latu.Error do
     :sql_state,
     :stacktrace,
     :error_id,
+    :retry_delay,
     classes: [],
     parameters: %{},
     causes: []
@@ -68,6 +71,7 @@ defmodule Latu.Error do
           sql_state: String.t() | nil,
           stacktrace: String.t() | nil,
           error_id: String.t() | nil,
+          retry_delay: non_neg_integer() | nil,
           classes: [String.t()],
           parameters: %{optional(String.t()) => String.t()},
           causes: [cause()]

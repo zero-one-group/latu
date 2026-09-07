@@ -1339,3 +1339,41 @@ gRPC status cut to 2048 characters ending in `...`, and that is what `%Latu.Erro
 the same on the explicit call: `error_details/2` puts the thrown error's message on the struct
 beside the causes. Nothing changes without the call, by the same reasoning that makes the fetch
 explicit; a short message is identical on both paths.
+\n
+## 2026-09-07 — Every RPC retries, `RetryInfo` counts, and four smaller alignments
+
+**Unary RPCs retry on the session's policy.** PySpark wraps every call in `Retrying`; Latu
+retried only the execution stream, so a transient `UNAVAILABLE` on `AnalyzePlan` or `Config`
+failed outright. `Client.retrying/3` now wraps every call that asks the server for something.
+Not `ExecutePlan`/`ReattachExecute` — `Latu.Client.Execution` owns those — and not the releases
+that are best effort: `ReleaseExecute` on the stream, and `ReleaseSession` inside
+`disconnect(release: true)`, which has a five-second budget to keep. Backing off blocks the
+caller's process, as the reattach path already does. The retry event carries `rpc` where an
+execution's carries `operation_id`.
+
+**A `RetryInfo` makes any status retryable, and its delay is a floor.** PySpark's
+`DefaultPolicy` third case; `Latu.Retry.retryable?/1` is now the one predicate, with
+`max_server_retry_delay` (10 min) capping the floor before jitter. Spark's own server never
+attaches one — `ErrorUtils`/`SparkConnectService` on 4.2 have no `RetryInfo` — so this is for
+a gateway in front of it. The old comment blaming elixir-grpc for not decoding the detail was
+wrong: `details` is the same `Any` list `ErrorInfo` is read from.
+
+**Loopback is what the kernel keeps on the machine**: `localhost`, 127/8, `::1` in any
+spelling, and 127/8 as an IPv4-mapped address — parsed with `:inet.parse_address/1` rather than
+listed. PySpark checks the string `"localhost"` alone. Testing it found that an IPv6 literal
+never connected: `"host:port"` compatibility mode splits on colons, so the target takes
+elixir-grpc's `ipv6:[addr]:port` form when the host parses as one.
+
+**`SPARK_USER` comes before the OS user** for the default `user_id`, PySpark's own order. The
+`user-agent` header stays unset: PySpark sends its agent only as `client_type`, so there was no
+parity to gain.
+
+**A binary literal must be UTF-8**: the proto field is a string and the server refuses invalid
+bytes with an opaque error; `lit/1` refuses first and names Spark's `X'…'` literal. **Booleans
+are refused wherever a name is taken**: they are atoms, and `to_name(true)` was a column called
+`"true"`.
+
+Not done: caching the `create_dataframe/3` config probe on the returned session. A caller
+rarely threads `df.session` back, so the saving would seldom land, and a cached threshold goes
+stale the moment `set_conf/3` moves it — SparkEx shipped exactly that bug. One round trip per
+call stays.

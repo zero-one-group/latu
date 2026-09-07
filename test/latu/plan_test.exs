@@ -286,6 +286,16 @@ defmodule Latu.PlanTest do
       assert arm(Plan.to_expr(true)) == {:boolean, true}
     end
 
+    test "and in a name position they are refused, not columns named true" do
+      for bad <- [true, false, nil] do
+        assert_raise ArgumentError, ~r/string or an atom/, fn -> apply(Plan, :to_name, [bad]) end
+      end
+    end
+
+    test "a binary literal is UTF-8; raw bytes have Spark's own spelling" do
+      assert_raise ArgumentError, ~r/UTF-8.*X'/, fn -> apply(Plan, :lit, [<<0xFF, 0xFE>>]) end
+    end
+
     test "an expression passes through untouched" do
       expression = Plan.expr("id > 3")
 

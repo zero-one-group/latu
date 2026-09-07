@@ -353,7 +353,10 @@ defmodule Latu.DataFrame do
   end
 
   defp column_name(name) when is_binary(name), do: name
-  defp column_name(name) when is_atom(name) and not is_nil(name), do: Atom.to_string(name)
+
+  defp column_name(name) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
+    Atom.to_string(name)
+  end
 
   defp column_name(name) do
     raise ArgumentError, "a column name is a string or an atom, not #{inspect(name)}"

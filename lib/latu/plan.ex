@@ -274,12 +274,18 @@ defmodule Latu.Plan do
   defp path(path), do: raise(ArgumentError, "a path is a string, not #{inspect(path)}")
 
   defp table_name(name) when is_binary(name), do: name
-  defp table_name(name) when is_atom(name) and not is_nil(name), do: Atom.to_string(name)
+
+  defp table_name(name) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
+    Atom.to_string(name)
+  end
 
   defp table_name(name), do: name_of(name, "table name")
 
   defp name_of(name, _what) when is_binary(name), do: name
-  defp name_of(name, _what) when is_atom(name) and not is_nil(name), do: Atom.to_string(name)
+
+  defp name_of(name, _what) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
+    Atom.to_string(name)
+  end
 
   defp name_of(name, what) do
     raise ArgumentError, "a #{what} is a string or an atom, not #{inspect(name)}"
@@ -1204,7 +1210,7 @@ defmodule Latu.Plan do
   defp identifier(name, what \\ "column name")
   defp identifier(name, _what) when is_binary(name), do: name
 
-  defp identifier(name, _what) when is_atom(name) and not is_nil(name) do
+  defp identifier(name, _what) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
     Atom.to_string(name)
   end
 
@@ -1991,7 +1997,19 @@ defmodule Latu.Plan do
   defp scalar(value) when is_integer(value) and value in @int32, do: {:integer, value}
   defp scalar(value) when is_integer(value) and value in @int64, do: {:long, value}
   defp scalar(value) when is_float(value), do: {:double, value}
-  defp scalar(value) when is_binary(value), do: {:string, value}
+
+  # Elixir's binary is both Spark's string and its bytes; the proto field is a string, and the
+  # server refuses one that is not UTF-8. Spark's own spelling for bytes is the SQL literal.
+  defp scalar(value) when is_binary(value) do
+    if String.valid?(value) do
+      {:string, value}
+    else
+      raise ArgumentError,
+            "a binary literal is a UTF-8 string; for raw bytes use Spark's binary literal, " <>
+              "expr(\"X'…'\") with the bytes from Base.encode16/1"
+    end
+  end
+
   defp scalar(%Date{} = value), do: {:date, Date.diff(value, @epoch_date)}
 
   defp scalar(%DateTime{} = value), do: {:timestamp, DateTime.to_unix(value, :microsecond)}
@@ -2113,7 +2131,8 @@ defmodule Latu.Plan do
   def to_projections(columns) when is_list(columns), do: Enum.map(columns, &to_projection/1)
   def to_projections(column), do: to_projections([column])
 
-  defp to_projection({name, value}) when is_atom(name) and not is_nil(name) do
+  defp to_projection({name, value})
+       when is_atom(name) and not is_nil(name) and not is_boolean(name) do
     as(to_expr(value), name)
   end
 
@@ -2441,7 +2460,10 @@ defmodule Latu.Plan do
   # A statistic is neither a column name nor a value, so it gets its own coercion and its own
   # message: "25%" is a perfectly good one and would read oddly as a column.
   defp statistic(name) when is_binary(name), do: name
-  defp statistic(name) when is_atom(name) and not is_nil(name), do: Atom.to_string(name)
+
+  defp statistic(name) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
+    Atom.to_string(name)
+  end
 
   defp statistic(other) do
     raise ArgumentError,

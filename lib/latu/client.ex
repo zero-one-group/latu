@@ -12,10 +12,9 @@ defmodule Latu.Client do
   alias Latu.Progress
   alias Latu.Protocol.Spark.Connect, as: Proto
   alias Latu.Protocol.Spark.Connect.SparkConnectService.Stub
+  alias Latu.Retry
   alias Latu.Session
   alias Latu.Telemetry
-
-  @loopback ~w(localhost 127.0.0.1 ::1 0:0:0:0:0:0:0:1)
 
   # The one field each AnalyzePlan response arm carries. Read out of PySpark's
   # `AnalyzeResult.fromProto`; `persist` and `unpersist` carry none.
@@ -94,7 +93,7 @@ defmodule Latu.Client do
   end
 
   defp released(%Session{} = session) do
-    case release_session(session, timeout: @release_on_disconnect_timeout) do
+    case release_session(session, [timeout: @release_on_disconnect_timeout], &rpc/3) do
       {:ok, session} ->
         session
 
@@ -163,7 +162,7 @@ defmodule Latu.Client do
 
     call = fn -> Stub.analyze_plan(session.channel, request, timeout: session.timeout) end
 
-    with {:ok, response} <- rpc("AnalyzePlan", session, call),
+    with {:ok, response} <- retrying("AnalyzePlan", session, call),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       {:ok, response, session}
@@ -305,7 +304,7 @@ defmodule Latu.Client do
 
     call = fn -> Stub.config(session.channel, request, timeout: session.timeout) end
 
-    with {:ok, response} <- rpc("Config", session, call),
+    with {:ok, response} <- retrying("Config", session, call),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       warn(op, response.warnings)
@@ -400,7 +399,7 @@ defmodule Latu.Client do
     request = struct!(request, interrupt_scope(opts))
     call = fn -> Stub.interrupt(session.channel, request, timeout: session.timeout) end
 
-    with {:ok, response} <- rpc("Interrupt", session, call),
+    with {:ok, response} <- retrying("Interrupt", session, call),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       {:ok, response.interrupted_ids, session}
@@ -444,7 +443,8 @@ defmodule Latu.Client do
 
     call = fn -> Stub.get_status(session.channel, request, timeout: session.timeout) end
 
-    with {:ok, response} <- rpc("GetStatus", session, call) |> explain_missing_session(session),
+    with {:ok, response} <-
+           retrying("GetStatus", session, call) |> explain_missing_session(session),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       {:ok, Enum.map(response.operation_statuses, &operation_status/1), session}
@@ -512,7 +512,7 @@ defmodule Latu.Client do
     call = fn -> Stub.clone_session(session.channel, request, timeout: session.timeout) end
 
     with {:ok, response} <-
-           rpc("CloneSession", session, call) |> explain_missing_session(session),
+           retrying("CloneSession", session, call) |> explain_missing_session(session),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id),
          {:ok, clone} <- cloned(session, response, wanted) do
@@ -553,6 +553,12 @@ defmodule Latu.Client do
   end
 
   def release_session(%Session{} = session, opts) when is_list(opts) do
+    release_session(session, opts, &retrying/3)
+  end
+
+  # `through` is `retrying/3` for the call a caller makes, `rpc/3` for the courtesy on the way
+  # out of `disconnect/2`, which has a budget of its own to keep.
+  defp release_session(%Session{} = session, opts, through) do
     opts = Keyword.validate!(opts, allow_reconnect: false, timeout: session.timeout)
 
     request = %Proto.ReleaseSessionRequest{
@@ -564,7 +570,7 @@ defmodule Latu.Client do
 
     call = fn -> Stub.release_session(session.channel, request, timeout: opts[:timeout]) end
 
-    with {:ok, response} <- rpc("ReleaseSession", session, call) do
+    with {:ok, response} <- through.("ReleaseSession", session, call) do
       Session.confirm(session, response.session_id, response.server_side_session_id)
     end
   end
@@ -614,7 +620,7 @@ defmodule Latu.Client do
 
     call = fn -> Stub.artifact_status(session.channel, request, timeout: session.timeout) end
 
-    with {:ok, response} <- rpc("ArtifactStatus", session, call),
+    with {:ok, response} <- retrying("ArtifactStatus", session, call),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       cached =
@@ -642,7 +648,7 @@ defmodule Latu.Client do
       |> GRPC.Stub.recv(timeout: session.timeout)
     end
 
-    with {:ok, response} <- rpc("AddArtifacts", session, call),
+    with {:ok, response} <- retrying("AddArtifacts", session, call),
          {:ok, session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       case Enum.reject(response.artifacts, & &1.is_crc_successful) do
@@ -1040,6 +1046,35 @@ defmodule Latu.Client do
     %Proto.UserContext{user_id: session.user_id, user_name: session.user_name}
   end
 
+  @doc false
+  # Every RPC that asks the server for something is retried on the session's policy, as
+  # PySpark's `Retrying` wraps every call. Not the two that open a result stream —
+  # `Latu.Client.Execution` decides those — and not a best-effort release, which must never
+  # hold a caller up. Backing off blocks the caller's process, the one place Latu has to do it.
+  # Public for the offline test; `call` is any zero-arity function returning what a `Stub` call
+  # does.
+  def retrying(name, %Session{retry: %Retry{} = retry} = session, call) do
+    retrying(name, session, call, retry, 0)
+  end
+
+  defp retrying(name, session, call, retry, attempt) do
+    case rpc(name, session, call) do
+      {:error, %Error{} = error} = failure ->
+        if attempt < retry.max_retries and Retry.retryable?(error) do
+          backoff = Retry.wait(retry, attempt, error.retry_delay)
+          ids = %{session_id: session.session_id, rpc: name}
+          Telemetry.attempt(:retry, backoff, attempt + 1, ids)
+          Process.sleep(backoff)
+          retrying(name, session, call, retry, attempt + 1)
+        else
+          failure
+        end
+
+      result ->
+        result
+    end
+  end
+
   # Every unary RPC funnels through here, which is why the telemetry span is here and not at
   # ten call sites. Only the session *id* is handed over — see `Latu.Telemetry`.
   defp rpc(name, %Session{} = session, call) do
@@ -1062,16 +1097,24 @@ defmodule Latu.Client do
   # `deps/googleapis`, which `grpc_core` depends on — so this needs no dependency, no proto
   # generation and no round trip.
   @error_info_url "type.googleapis.com/google.rpc.ErrorInfo"
+  @retry_info_url "type.googleapis.com/google.rpc.RetryInfo"
 
   defp rpc_error(%GRPC.RPCError{} = error) do
     Error.new(:rpc, error.message, [status: error.status, details: error.details] ++ info(error))
   end
 
   defp info(%GRPC.RPCError{details: details}) when is_list(details) do
-    case Enum.find(details, &(&1.type_url == @error_info_url)) do
-      nil -> []
-      any -> from_error_info(Google.Rpc.ErrorInfo.decode(any.value))
-    end
+    Enum.flat_map(details, fn
+      %{type_url: @error_info_url, value: value} ->
+        from_error_info(Google.Rpc.ErrorInfo.decode(value))
+
+      # Spark itself never attaches one; a gateway in front of it may, to say "later".
+      %{type_url: @retry_info_url, value: value} ->
+        [retry_delay: delay_ms(Google.Rpc.RetryInfo.decode(value))]
+
+      _other ->
+        []
+    end)
   rescue
     # Inspecting an error must never be the thing that fails. A trailer Latu cannot read leaves
     # the fields nil, which is exactly what a server that sent none does.
@@ -1079,6 +1122,13 @@ defmodule Latu.Client do
   end
 
   defp info(%GRPC.RPCError{}), do: []
+
+  # An absent duration is still a RetryInfo — "retry, no particular wait" — so 0, not nil.
+  defp delay_ms(%Google.Rpc.RetryInfo{retry_delay: nil}), do: 0
+
+  defp delay_ms(%Google.Rpc.RetryInfo{retry_delay: %{seconds: seconds, nanos: nanos}}) do
+    seconds * 1_000 + div(nanos, 1_000_000)
+  end
 
   # The metadata keys are PySpark's — `connect.py`'s `convert_exception` reads the same six.
   defp from_error_info(%Google.Rpc.ErrorInfo{metadata: metadata}) do
@@ -1133,7 +1183,7 @@ defmodule Latu.Client do
 
     call = fn -> Stub.fetch_error_details(session.channel, request, timeout: session.timeout) end
 
-    with {:ok, response} <- rpc("FetchErrorDetails", session, call),
+    with {:ok, response} <- retrying("FetchErrorDetails", session, call),
          {:ok, _session} <-
            Session.confirm(session, response.session_id, response.server_side_session_id) do
       {:ok, filled(error, Enum.map(causes(response), &cause/1))}
@@ -1207,8 +1257,14 @@ defmodule Latu.Client do
   # "host:port" puts elixir-grpc in compatibility mode, which rewrites to `ipv4:host:port`
   # and resolves through Gun rather than the DNS resolver. That is what we want: a Spark
   # Connect session is server-side state pinned to one server, so re-resolving or balancing
-  # across A records would silently move us to a server that has never heard of it.
-  defp target(%Session{host: host, port: port}), do: "#{host}:#{port}"
+  # across A records would silently move us to a server that has never heard of it. An IPv6
+  # literal has colons of its own, so it takes the one form elixir-grpc reads brackets in.
+  defp target(%Session{host: host, port: port}) do
+    case :inet.parse_ipv6strict_address(String.to_charlist(host)) do
+      {:ok, _address} -> "ipv6:[#{host}]:#{port}"
+      {:error, _not_ipv6} -> "#{host}:#{port}"
+    end
+  end
 
   defp open(target, opts) do
     case GRPC.Stub.connect(target, opts) do
@@ -1287,13 +1343,28 @@ defmodule Latu.Client do
   defp check_token_transport(%Session{token: nil}), do: :ok
   defp check_token_transport(%Session{use_ssl: true}), do: :ok
 
-  defp check_token_transport(%Session{host: host}) when host in @loopback, do: :ok
-
   defp check_token_transport(%Session{host: host}) do
-    {:error,
-     Error.new(
-       :connect,
-       "refusing to send a bearer token in cleartext to #{host}; add ;use_ssl=true to the URL"
-     )}
+    if loopback?(host) do
+      :ok
+    else
+      {:error,
+       Error.new(
+         :connect,
+         "refusing to send a bearer token in cleartext to #{host}; add ;use_ssl=true to the URL"
+       )}
+    end
+  end
+
+  # What never leaves the machine: `localhost`, all of 127/8, `::1` in any spelling, and 127/8
+  # written as an IPv4-mapped IPv6 address. PySpark checks the string "localhost" alone.
+  defp loopback?("localhost"), do: true
+
+  defp loopback?(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, {127, _, _, _}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0xFFFF, high, _low}} -> div(high, 256) == 127
+      _ -> false
+    end
   end
 end

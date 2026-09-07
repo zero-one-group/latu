@@ -186,6 +186,20 @@ defmodule Latu.SessionTest do
                Session.from_url("sc://h", connect_timeout: 500)
     end
 
+    test "the default user id is SPARK_USER before the OS user, PySpark's order" do
+      previous = System.get_env("SPARK_USER")
+      System.put_env("SPARK_USER", "svc-latu")
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("SPARK_USER", previous),
+          else: System.delete_env("SPARK_USER")
+      end)
+
+      assert {:ok, %Session{user_id: "svc-latu"}} = Session.from_url("sc://h")
+      assert {:ok, %Session{user_id: "alice"}} = Session.from_url("sc://h/;user_id=alice")
+    end
+
     test "user_name is empty unless asked for, matching PySpark's UserContext" do
       assert {:ok, %Session{user_name: ""}} = Session.from_url("sc://h/;user_id=alice")
       assert {:ok, %Session{user_name: "Alice"}} = Session.from_url("sc://h", user_name: "Alice")
