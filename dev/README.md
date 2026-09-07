@@ -212,3 +212,37 @@ Two fixtures are shaped by something other than the type they carry. `vector_den
 is the whole reason `to_nx/2` can read a column `collect/2` refuses. And `big_two` is over
 64 bytes on purpose: below that the BEAM copies a binary into the process heap however it was
 made, so a small batch cannot show whether a column's buffer still points into the whole one.
+
+## `probe_nx_copies.exs`
+
+    docker compose up -d spark-connect
+    mix run dev/probe_nx_copies.exs
+
+The measurement ML0 promised and 0.3.0 still owed: what `Latu.to_nx/2` is worth against the
+routes that existed before it. `probe_copies.exs` established the Explorer baseline and refuted
+`to_nx/2`'s *performance* case before the verb was written; this asks the question the other way
+round, now that it exists.
+
+**Read `d RSS`, never `peak binary`.** Explorer's tensors are native allocations outside the
+BEAM heap and `Nx.from_binary/2`'s are inside it, so the two routes are not comparable on binary
+at all — which is also why `probe_copies.exs`'s table could not simply grow a `to_nx` row.
+
+Two parts, answering different questions. On a plain `double` column every route works, so part
+one is cost, apples to apples. On a `Vector` column they do not: `collect/2` and `to_explorer/2`
+refuse it — and **not for free**, since the schema is checked after the result crosses the wire —
+so part two compares `to_nx/2` against `vector_to_array` plus a rebuild, which is what a user had
+before 0.3.0 and what PySpark does. Part one may well come out "about the same"; that is a fine
+answer, and the guide should say it rather than imply speed.
+
+Every route is cross-checked to produce a bit-identical tensor before anything is timed, because
+three timings for three different answers are worth nothing. A disagreement stops the probe.
+
+The Vector column is built with `array_to_vector`, which reaches Spark from Latu alone, so this
+needs no `latu_ml`.
+
+## `support/probe_memory.exs`
+
+Not a probe. The sampling harness `probe_copies.exs` and `probe_nx_copies.exs` share: peak
+sampled every 5 ms rather than read before and after, since the copies that matter are
+transient, and binary, BEAM total and RSS all reported because no one of them sees both memory
+regimes. A raise inside a measured span becomes a failed row rather than stopping the run.
