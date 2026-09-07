@@ -112,7 +112,9 @@ defmodule Latu.MixProject do
         # impl for `Latu.DataFrame` behind an optional dep, and nothing else.
         "Results and observability": [
           Latu.Result,
+          Latu.Result.Arrow,
           Latu.Result.Literal,
+          Latu.Result.Nx,
           Latu.Result.UDT,
           Latu.Error,
           Latu.ExecutionInfo,
@@ -171,7 +173,9 @@ defmodule Latu.MixProject do
       {:telemetry, "~> 1.0"},
       # 0.36 is the floor: `:default_group_for_doc` and `:group` doc metadata land there.
       {:ex_doc, "~> 0.36", only: :dev, runtime: false},
-      {:nx, "~> 0.13", only: :dev}
+      # Optional, in `:kino`'s slot: `lib/latu/result/nx.ex` compiles to nothing without it,
+      # and the probes under `dev/` use it too.
+      {:nx, "~> 0.13", optional: true}
     ]
   end
 

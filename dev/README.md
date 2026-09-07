@@ -193,3 +193,22 @@ offline that it still covers the exported surface, so a Spark bump that adds or 
 function fails in a second. **Re-run the probe at any Spark bump or registry regeneration, and
 diff**: an unchanged file means no wrapper's shape moved. `dev/probe_dtypes.exs` is the same
 instrument for the Arrow types the schema guard refuses.
+
+## `make_arrow_fixtures.py`
+
+    python dev/make_arrow_fixtures.py            # rewrite test/arrow/*.arrow
+    python dev/make_arrow_fixtures.py --check    # exit 1 if any file is out of date
+
+The Arrow IPC streams `Latu.Result.Arrow` and `Latu.Result.Nx` are tested against. Each file is
+one complete stream — schema, one record batch, end marker — which is what Spark Connect sends
+per batch and what `Latu.to_arrow/2` hands back.
+
+Written by **pyarrow**, so the reader is checked against Arrow's own encoder rather than against
+itself; the expected values live in the tests, where they can be read. It reaches no server.
+`dev/.venv` already has pyarrow, as a PySpark dependency.
+
+Two fixtures are shaped by something other than the type they carry. `vector_dense` and
+`vector_sparse` are Spark's `VectorUDT` sqlType — `struct<type, size, indices, values>` — which
+is the whole reason `to_nx/2` can read a column `collect/2` refuses. And `big_two` is over
+64 bytes on purpose: below that the BEAM copies a binary into the process heap however it was
+made, so a small batch cannot show whether a column's buffer still points into the whole one.

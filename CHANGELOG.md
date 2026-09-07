@@ -5,6 +5,17 @@ remove; each such change is listed here with the migration in one line.
 
 ## Unreleased
 
+**`Latu.to_nx/2`, `to_nx!/2` and `stream_nx/2`** turn a result into `Nx` tensors. A numeric
+column with no nulls becomes a 1-D tensor whose binary *is* the Arrow buffer — no copy for a
+single batch — and a column of equal-length numeric lists, or of dense MLlib `Vector`s, becomes
+one `{rows, width}` tensor. Everything else is refused by name.
+
+This is the only way to read a `Vector` column into Elixir: Spark describes one as a UDT with
+no SQL type, so `collect/2` and `to_explorer/2` both refuse it, while the Arrow stream carries
+its own schema and says exactly what it is. `Latu.Result.Arrow` is the reader — the IPC
+streaming format, no dependency — and `Latu.Result.Nx` the mapping, behind the now-optional
+`:nx`. Adding `{:nx, "~> 0.13"}` is what turns them on; without it `to_nx/2` says so.
+
 **`Latu.disconnect/2` closes the socket within a second.** Gun waited its default 15 s for a
 close the Spark server never sends, so a client that connects per unit of work leaked sockets
 for 15 s each — enough to hit an open-files limit at a few connections a second. No migration.
