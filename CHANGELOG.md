@@ -3,6 +3,38 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.5.0 — 2026-09-08
+
+One behavioural change, and it is the reason this is a minor rather than a patch.
+
+**A `user_agent` in the connection URL now composes rather than replaces.**
+`sc://host:15002/;user_agent=my-app` used to set `client_type` to exactly `my-app`; it now sets
+`my-app latu/0.5.0 elixir/… otp/…`, which is how PySpark composes it. The `client_type:` option
+still replaces the whole string, so that is the migration if you were relying on the old
+behaviour. A `user_agent` longer than 2048 bytes once percent-escaped is now refused rather than
+sent, matching PySpark's cap.
+
+**The cheatsheet page was wrong in two ways and is regenerated.** The `+ !` marker that flags a
+verb with a raising twin was appended before the summary was clamped to fit its cell, so 17 of
+the 88 verbs that have one lost the marker. And the first-sentence split treated `e.g.` as a
+sentence end, which left `spark_version/1` reading "The Spark version the server reports, e.g."
+with the example eaten. Both are generator bugs, and `dev/cheatsheet.exs` now has unit tests
+rather than only a diff against its own output.
+
+**A `range_between/3` offset outside 64 bits is refused by name.** It previously escaped as a
+`FunctionClauseError` on a private function, where the `rows_between/3` equivalent already
+raised an `ArgumentError` saying what was wrong. Unreachable in practice.
+
+**The documentation was rewritten.** The README, the four guides and `usage-rules.md` are the
+same facts in a different voice, about a fifth shorter. MLlib now links to
+[`latu_ml`](https://hexdocs.pm/latu_ml), which is published, where the prose used to describe it
+as a package that might one day exist.
+
+Internals, with no surface change: the transport grew a single request envelope in place of
+twelve copies of one error, the reattach handler keeps one snapshot instead of four, and the Nx
+decoder lost a triple list reversal that was correct only because two of the three cancelled.
+`priv/proto/VERSION` records which Spark release the vendored protos came from.
+
 ## 0.4.0 — 2026-09-07
 
 One verb. Additive; no migration.
