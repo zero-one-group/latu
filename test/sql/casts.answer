@@ -1,0 +1,11 @@
+# schema
+parsed int nullable
+refused int nullable
+truncated int nullable
+
+# rows
++------+-------+---------+
+|parsed|refused|truncated|
++------+-------+---------+
+|7     |NULL   |2        |
++------+-------+---------+

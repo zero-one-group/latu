@@ -1,0 +1,11 @@
+# schema
+year_month interval year not null
+day_time interval day not null
+day_to_second interval day to second not null
+
+# rows
++-----------------+----------------+-----------------------------------+
+|year_month       |day_time        |day_to_second                      |
++-----------------+----------------+-----------------------------------+
+|INTERVAL '2' YEAR|INTERVAL '1' DAY|INTERVAL '1 02:03:04' DAY TO SECOND|
++-----------------+----------------+-----------------------------------+

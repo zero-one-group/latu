@@ -33,6 +33,9 @@ defmodule Latu.Session do
   @default_keepalive_tolerance 2
 
   @url_params ~w(use_ssl token user_id user_agent session_id)
+
+  # PySpark's cap, measured after escaping because that is the form that travels in the URL.
+  @max_user_agent 2048
   @overridable [
     :session_id,
     :user_id,
@@ -99,6 +102,9 @@ defmodule Latu.Session do
   header, which is how Databricks-style URLs pass `x-databricks-cluster-id` and friends.
   Values are percent-decoded, so a `=` in a token must be written `%3D`.
 
+  `user_agent` is *prepended* to Latu's own identity rather than replacing it, which is how
+  PySpark composes it; the `client_type:` option replaces the whole string.
+
   Options override the URL: #{inspect(@overridable)}.
 
       iex> {:ok, s} = Latu.Session.from_url("sc://localhost:15002")
@@ -114,6 +120,7 @@ defmodule Latu.Session do
          {:ok, params, headers} <- parse_params(rest),
          {:ok, use_ssl} <- parse_bool(params, "use_ssl", false),
          {:ok, token} <- token(params),
+         {:ok, user_agent} <- user_agent(params),
          {:ok, session_id} <- session_id(params, opts) do
       session = %__MODULE__{
         host: host,
@@ -124,7 +131,7 @@ defmodule Latu.Session do
         session_id: session_id,
         user_id: params["user_id"] || default_user_id(),
         user_name: "",
-        client_type: params["user_agent"] || default_client_type()
+        client_type: client_type(user_agent)
       }
 
       opts =
@@ -372,6 +379,23 @@ defmodule Latu.Session do
   defp default_user_id do
     System.get_env("SPARK_USER") || System.get_env("USER") || System.get_env("USERNAME") || ""
   end
+
+  defp user_agent(params) do
+    case Map.fetch(params, "user_agent") do
+      :error -> {:ok, nil}
+      {:ok, agent} -> within_limit(agent, byte_size(URI.encode(agent, &URI.char_unreserved?/1)))
+    end
+  end
+
+  defp within_limit(agent, escaped) when escaped <= @max_user_agent, do: {:ok, agent}
+
+  defp within_limit(_agent, escaped) do
+    {:error, invalid("user_agent must be at most #{@max_user_agent} bytes once escaped", escaped)}
+  end
+
+  # PySpark composes rather than replaces: the caller's agent, then what identifies the client.
+  defp client_type(nil), do: default_client_type()
+  defp client_type(agent), do: agent <> " " <> default_client_type()
 
   defp default_client_type do
     "latu/#{@version} elixir/#{System.version()} otp/#{System.otp_release()}"

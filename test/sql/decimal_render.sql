@@ -1,0 +1,1 @@
+SELECT CAST(1.5 AS DECIMAL(10, 2)) AS scaled, CAST(-0.005 AS DECIMAL(5, 3)) AS negative

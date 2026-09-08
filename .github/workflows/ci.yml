@@ -70,3 +70,13 @@ jobs:
       - name: Spark logs
         if: failure()
         run: docker compose logs --no-color --tail=200
+
+  # Its own job: a GitHub outage should not be able to fail `mix check.all`, and this needs no
+  # BEAM. What it guards against: docs/decisions.md.
+  protos:
+    name: vendored protos match their Spark tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./dev/check_protos.sh

@@ -197,7 +197,7 @@ defmodule Latu.MixProject do
       "check.all": [
         "format --check-formatted",
         "compile",
-        "test --include integration --warnings-as-errors",
+        "test --include integration --include golden --warnings-as-errors",
         "cmd env MIX_ENV=dev mix docs"
       ]
     ]

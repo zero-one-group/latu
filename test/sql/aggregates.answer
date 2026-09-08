@@ -1,0 +1,11 @@
+# schema
+total bigint nullable
+mean double nullable
+buckets bigint not null
+
+# rows
++-----+----+-------+
+|total|mean|buckets|
++-----+----+-------+
+|45   |4.5 |3      |
++-----+----+-------+

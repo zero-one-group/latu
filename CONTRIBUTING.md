@@ -88,6 +88,9 @@ vendored Spark 4.2.0 protos in `priv/proto/`. Do not edit them by hand:
 mix proto.generate
 ```
 
+`priv/proto/VERSION` names the tag those protos came from, and `dev/check_protos.sh` (its own CI
+job) refuses when they no longer match it. Re-vendoring means moving both together.
+
 ## Release checklist
 
 Maintainer only. The nested notes are the traps each step exists for; the reasoning behind them

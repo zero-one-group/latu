@@ -39,3 +39,6 @@ latu-*.tar
 !/fixtures/.gitkeep
 
 # test/wire/ is committed on purpose. See dev/README.md.
+
+# test/sql/*.answer is committed; *.actual is what LATU_GOLDEN=report writes.
+/test/sql/*.actual

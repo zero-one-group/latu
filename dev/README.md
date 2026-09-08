@@ -110,6 +110,48 @@ one.
 
 `Latu.Plan.normalize_ids/1` mirrors the first two. Keep them in step.
 
+## Result goldens
+
+`test/wire` pins what Latu *sends*. `test/sql` pins what the server *answers*: one `.sql` file
+per case and one `.answer` beside it, holding the schema and the rendered table.
+
+```bash
+docker compose up -d --wait
+LATU_GOLDEN=overwrite mix test --include golden
+git diff test/sql
+```
+
+**Read that diff.** A golden nobody looked at pins whatever the code did, bug included.
+
+| `LATU_GOLDEN` | What `assert_answer/2` does |
+| --- | --- |
+| unset | asserts against the `.answer` — CI on the target version |
+| `overwrite` | rewrites the `.answer` |
+| `report` | writes a `.actual` beside it and asserts nothing |
+
+A case is a file: drop `something.sql` into `test/sql/`, regenerate, commit both. Keep the query
+deterministic — no `current_date`, no `rand`, no paths — or the golden will not hold still.
+`test/latu/sql_golden_test.exs` fails, with no server, if a `.sql` has no `.answer`, so a case
+cannot be added and left meaningless.
+
+## Newer Spark
+
+`docker-compose.yml` reads `SPARK_VERSION`, so both servers move together. The goldens only
+report here: a newer Spark is allowed to render differently, and that diff is the point.
+
+```bash
+docker compose down
+SPARK_VERSION=4.3.0 docker compose up -d --wait
+mix test --include integration
+LATU_GOLDEN=report mix test --include golden
+for a in test/sql/*.actual; do diff -u "${a%.actual}.answer" "$a"; done
+docker compose down
+```
+
+`docker compose down` on both ends: the containers keep whichever image they were created with.
+`.github/workflows/spark-versions.yml` does the same weekly, and on demand with the tags passed
+as its `versions` input.
+
 ## The function library
 
 Three scripts, and none of them invents anything.

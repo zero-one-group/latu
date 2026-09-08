@@ -1,0 +1,10 @@
+# schema
+scaled decimal(10,2) not null
+negative decimal(5,3) not null
+
+# rows
++------+--------+
+|scaled|negative|
++------+--------+
+|1.50  |-0.005  |
++------+--------+

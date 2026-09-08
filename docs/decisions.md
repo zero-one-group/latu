@@ -1420,3 +1420,64 @@ in `latu_ml`'s `dev/probe_ext.exs`, where an ML estimator uploaded this way was 
 the driver and then failed inside its own Spark job with `ClassNotFound`. Code that has to run
 in a task wants the jar on the cluster's classpath, and the docstring says so rather than
 letting a caller find out from a stage failure.
+
+## 2026-09-08 — `user_agent` composes with Latu's identity rather than replacing it
+
+`sc://h/;user_agent=my-app` used to *become* `client_type`, so the string identifying the client
+— `latu/x elixir/y otp/z` — vanished the moment a caller named their app. PySpark composes
+(`{agent} spark/{v} os/{os} python/{v}`), and server-side telemetry and some gateways read the
+field, so Latu now prepends: `my-app latu/x elixir/y otp/z`.
+
+The `client_type:` option still replaces the whole string. Two knobs, two meanings: the URL
+param says "and this is my app", the option says "this is the whole identity".
+
+A user agent over 2048 bytes **once percent-escaped** is refused rather than truncated. That is
+PySpark's cap, and it is measured after escaping because that is the form travelling in the URL.
+`lib/latu/session.ex`.
+
+## 2026-09-08 — Vendored protos are pinned to a Spark tag, and CI checks they have not drifted
+
+`priv/proto/spark/connect/*.proto` is copied from Apache Spark, and `mix proto.generate` turns it
+into `lib/latu/protocol/generated/`. Nothing checked the copy was still what that tag ships, and
+the failure that matters is silent: a field that *moves* into a `oneof` between releases still
+compiles, because a Protobuf struct accepts any key you fail to set — the assignment is dropped
+and the request goes out short a field. The Swift client shipped exactly that and defined
+pipeline flows with no query.
+
+`priv/proto/VERSION` names the tag; `dev/check_protos.sh` fetches each vendored file from it and
+refuses on any difference. Its own CI job, because a GitHub outage must not be able to fail
+`mix check.all`, and it needs no BEAM.
+
+It guards drift in what Latu vendors, not files it does not. A new proto upstream is an adoption
+question, not a correctness one.
+
+## 2026-09-08 — Newer Spark is tested, older Spark is not, and the result goldens report there
+
+Latu targets 4.2.0 and the README says so. Testing 3.5/4.0/4.1 would not verify that claim, it
+would make a new one: `ChunkedCachedLocalRelation`, `zip_with_index`, the geometry refusals and
+`time` in the decodable set are 4.1+ or 4.2+ surface, so a backward matrix buys a support
+commitment and a layer of version gates for users nobody promised anything to.
+
+Forward is the opposite trade, because the three things that break a client on a newer server are
+all invisible to a golden that pins what Latu sends: a proto field that moved, server semantics
+changing under an unchanged wire shape (`isLocal` flipped in 4.1), and a new server-side
+*requirement* — 4.3 rejects an uploaded `TIME(p)` column without `SPARK::time::precision` Arrow
+metadata, which Polars does not write. `.github/workflows/spark-versions.yml` runs the
+integration suite against tags given as an input, weekly and on demand, never on a PR: red there
+is upstream news, not a broken change.
+
+**Result goldens are what make such a run informative.** `test/wire` pins what Latu *sends*;
+`test/sql` pins what the server *answers* — schema and rendered table, for deterministic queries
+covering numeric widening, decimal and temporal rendering, null display, complex types, cast
+semantics, and the interval types the Arrow decoder refuses but `show` renders. The schema half
+is not decoration: `show` renders values, so a column whose *type* changed between servers
+renders byte-identically.
+
+On the target version they assert. On a newer one they only **report** — `LATU_GOLDEN=report`
+writes a `.actual` beside each `.answer` and the job diffs them into the run summary — because a
+new Spark is allowed to change its rendering, and a job going red for that gets muted, which is
+how a version matrix silently stops covering anything.
+
+Gating a *test* on the server version, when one is eventually needed, compares numeric
+components. `"4.10" >= "4.2"` is false as a string and `starts_with?("4.2")` skips silently on
+every later server; the Swift client shipped both and lost its whole `TIME` suite to the second.

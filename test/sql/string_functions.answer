@@ -1,0 +1,11 @@
+# schema
+padded string not null
+parts array<string> not null
+formatted string nullable
+
+# rows
++------+---------+---------+
+|padded|parts    |formatted|
++------+---------+---------+
+|----x |[a, b, c]|1,234.57 |
++------+---------+---------+
