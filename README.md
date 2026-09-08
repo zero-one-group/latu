@@ -5,6 +5,12 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://hex.pm/packages/latu"><img alt="Hex version" src="https://img.shields.io/hexpm/v/latu.svg"></a>
+  <a href="https://hexdocs.pm/latu"><img alt="Hexdocs" src="https://img.shields.io/badge/hex-docs-blue.svg"></a>
+  <a href="https://github.com/zero-one-group/latu/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/hexpm/l/latu.svg"></a>
+</p>
+
 A native Elixir DataFrame API for Apache Spark, over [Spark
 Connect](https://spark.apache.org/docs/latest/spark-connect-overview.html).
 

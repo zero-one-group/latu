@@ -1,20 +1,17 @@
 # Coming from Explorer
 
-Latu is not a replacement for [Explorer](https://hexdocs.pm/explorer). It is a client for a
-Spark cluster, and it **depends** on Explorer: results decode into `Explorer.DataFrame`s, local
-frames ship the other way, and twelve of Latu's operators are named after
-`Explorer.Series`'. If you already write Explorer, most of this page is about where the two
-meet rather than how to leave one behind.
+Latu is a client for a Spark cluster, and it **depends** on Explorer. Results decode into
+`Explorer.DataFrame`s, local frames ship the other way, and twelve of Latu's operators are named
+after `Explorer.Series`'. If you already write Explorer, most of this page is about where the
+two meet.
 
-The honest division: **Explorer is terser for a quick look, and it is the right tool while the
-data fits in memory.** Latu is for the frame that does not fit, the join across two sources the
-cluster already has, or the pipeline you keep editing — because a Latu plan is a value you can
-name, fold and inspect without running anything.
+**Explorer is terser for a quick look, and it is the right tool while the data fits in memory.**
+Latu is for the frame that does not fit, the join across two sources the cluster already has, or
+the pipeline you keep editing. A Latu plan is a value you can name, fold and inspect without
+running anything.
 
-Every `elixir` snippet here is executed by `mix check.all`
-(`test/integration/guides_test.exs`). The Explorer half of each comparison is a comment beside
-it, so the two shapes sit side by side without the page pretending to run two libraries.
-Explorer examples assume `require Explorer.DataFrame, as: DF`.
+Every `elixir` snippet here is executed by `mix check.all`. The Explorer half of each comparison
+is a comment beside it. Explorer examples assume `require Explorer.DataFrame, as: DF`.
 
 ```elixir
 import Latu.Column
@@ -42,28 +39,26 @@ sorted by key, so these are `price` then `year`.
 
 `add`, `subtract`, `multiply`, `divide`, `remainder`, `pow`, `equal`, `not_equal`, `greater`,
 `greater_equal`, `less` and `less_equal` are **`Explorer.Series`' names, on purpose**. Latu's
-naming precedence is Spark > Elixir > Polars > dplyr, and Spark names none of these twelve —
-PySpark exposes them as dunders only — so the first rung is silent and Latu falls to the one
-every Latu user already has in scope.
+naming precedence is Spark > Elixir > Polars > dplyr. Spark names none of these twelve, since
+PySpark exposes them as dunders only, so the first rung is silent and Latu falls to Explorer's.
 
 Two could not follow Explorer: `divide` cannot be `div` and `remainder` cannot be `rem`,
 because `Kernel.div/2` and `Kernel.rem/2` are auto-imported and `import Latu.Column` would stop
 compiling.
 
-Everything else does have a Spark name and follows it instead, which is where the vocabularies
-part: `is_null/1` rather than Explorer's `is_nil`, `contains/2`, `starts_with/2`, `between/3`,
+Everything else has a Spark name and follows it, which is where the vocabularies part:
+`is_null/1` rather than Explorer's `is_nil`, `contains/2`, `starts_with/2`, `between/3`,
 `isin/2`, `cast/2`.
 
 ## 2. A query is a value, not a macro
 
 This is the difference everything else follows from. `Explorer.DataFrame.filter/2`,
 `mutate/3`, `summarise/2` and `sort_by/3` are **macros**: inside them a bare identifier is a
-column name and `^` escapes back to Elixir. Latu has no query DSL at all. An atom is a column
-reference, anything else is an ordinary Elixir value, and an expression is a struct you can
-bind to a variable.
+column name and `^` escapes back to Elixir. Latu has no query DSL. An atom is a column
+reference, anything else is an ordinary Elixir value, and an expression is a struct you can bind
+to a variable.
 
-So a predicate is a **value**, which means you can name one, pass it around, and fold a list of
-them:
+So a predicate is a **value**. You can name one, pass it around, and fold a list of them:
 
 ```elixir
 # Explorer:  DF.filter(df, price > 1_000_000 and year > 2020)
@@ -74,21 +69,18 @@ recent = greater(:year, 2020)
 {:ok, 1} = sales |> Latu.filter(all([expensive, recent])) |> Latu.count()
 ```
 
-`expensive` is reusable, and so is its negation — `not_/1` takes the same value:
+`expensive` is reusable, and so is its negation. `not_/1` takes the same value:
 
 ```elixir
 {:ok, 1} = sales |> Latu.filter(not_(expensive)) |> Latu.count()
 ```
 
 **Explorer's macros structurally cannot do this**, because the predicate only exists during
-macro expansion. The escape hatch is the `_with` family — `filter_with/2`, `mutate_with/3`,
-`summarise_with/2`, `sort_with/3` — which take a function of a lazy frame and are the right
-answer when you need composition. Worth knowing they exist, and worth knowing that a closure
-over a lazy frame is a heavier thing to pass around than a struct.
+macro expansion. The escape hatch is the `_with` family: `filter_with/2`, `mutate_with/3`,
+`summarise_with/2`, `sort_with/3`, which take a function of a lazy frame.
 
-`all/1` and `any/1` fold left and return a single predicate, and both are total: `all([])` is
-`lit(true)` and `any([])` is `lit(false)`, so a filter built from an empty list of user-supplied
-conditions is a no-op rather than an error.
+`all/1` and `any/1` fold left into a single predicate, and both are total. `all([])` is
+`lit(true)` and `any([])` is `lit(false)`, so an empty list of conditions is a no-op.
 
 ## 3. There is no `^`
 
@@ -102,21 +94,20 @@ floor = 1_000_000
 {:ok, 2} = sales |> Latu.filter(greater(:price, floor)) |> Latu.count()
 ```
 
-The rule that replaces it is one sentence: **an atom is a column, and everything else is a
-value.** `col/1` is there for a name an atom cannot spell, the way Explorer's `col/1` is inside
-a query.
+One rule replaces it: **an atom is a column, and everything else is a value.** `col/1` is there
+for a name an atom cannot spell, the way Explorer's `col/1` is inside a query.
 
 ## 4. `collect` means something else here
 
-The one false friend, and it is worth reading twice. Both libraries have `collect`, `lazy` and
-`stream`, and they sit on different axes.
+The one false friend. Both libraries have `collect`, `lazy` and `stream`, and the words sit on
+different axes.
 
 | word | Explorer | Latu |
 |---|---|---|
 | `collect` | run a lazy frame; still local | **run on the cluster, bring rows back** |
-| `lazy` | opt in to the lazy backend | nothing to opt into — every verb is lazy |
-| `stream` | `to_rows_stream/2` — local rows | one Explorer frame per Arrow batch, off the wire |
-| `new` | build a frame from local data | `create_dataframe/3` — the data is **sent** |
+| `lazy` | opt in to the lazy backend | nothing to opt into: every verb is lazy |
+| `stream` | `to_rows_stream/2`, local rows | one Explorer frame per Arrow batch, off the wire |
+| `new` | build a frame from local data | `create_dataframe/3`, and the data is **sent** |
 
 `Latu.collect/2` is an action: it runs the plan on the cluster and hands back a list of row maps
 with atom keys.
@@ -132,22 +123,16 @@ A map pattern matches partially, which is why `year` need not appear above.
 
 ## 5. Everything is lazy, and the work is somewhere else
 
-Explorer is eager by default and `DF.lazy/1` opts in. Latu has no eager mode: every verb is a
-pure function from one plan to the next, and only an action talks to the server. So a mistyped
-pipeline costs nothing, and you can look at what you built before paying for it:
-
-```elixir
-lazy = Latu.filter(sales, expensive)
-
-"#Latu.DataFrame<local_relation → filter>" = inspect(lazy)
-```
+Explorer is eager by default and `DF.lazy/1` opts in. Latu has no eager mode. Every verb is a
+pure function from one plan to the next, and only an action talks to the server, so a mistyped
+pipeline costs nothing.
 
 Printing a Latu frame never does IO. Printing an eager Explorer frame shows you data because it
-already has it; printing a lazy one shows you the plan, which is the closer analogue.
+already has it. Printing a lazy one shows you the plan, which is the closer analogue.
 
 The other half of "somewhere else" is memory. An Explorer frame lives in your VM's process
-memory (outside the BEAM heap, in Polars' allocator — `Explorer.DataFrame.estimated_size/1` is
-your handle on it). A Latu frame holds a plan and nothing else, and the rows never reach your
+memory, outside the BEAM heap, in Polars' allocator. `Explorer.DataFrame.estimated_size/1` is
+your handle on it. A Latu frame holds a plan and nothing else, and the rows never reach your
 machine unless you ask for them.
 
 ## 6. There is no Series, and no client-side type model
@@ -155,7 +140,7 @@ machine unless you ask for them.
 Explorer's series are typed and the dtype is part of the API: `:s64`, `:f64`, `:string`,
 `{:s, 32}`, `{:duration, :microsecond}`. Latu has no type model on the client in either
 direction. `Latu.dtypes/1` gives Spark's own type names as strings, and a schema you supply is
-a string too — DDL, exactly as Spark spells it.
+a string too: DDL, exactly as Spark spells it.
 
 ```elixir
 # Explorer:  DF.dtypes(df)  #=> %{"price" => {:s, 64}, "year" => {:s, 64}}
@@ -164,10 +149,9 @@ a string too — DDL, exactly as Spark spells it.
 ["price", "year"] = Latu.columns!(sales)
 ```
 
-There is also no `Explorer.Series` equivalent and no `pull/2`: a single column is a one-column
-frame, and `Latu.select/2` plus `Latu.collect/2` is how it reaches you. This is deliberate — a
-client-side series would be a second type system to keep in step with Spark's, and Spark's is
-the authority.
+There is no `Explorer.Series` equivalent and no `pull/2`. A single column is a one-column frame,
+and `Latu.select/2` plus `Latu.collect/2` is how it reaches you. A client-side series would be a
+second type system to keep in step with Spark's.
 
 ## The daily twenty
 
@@ -176,7 +160,7 @@ the authority.
 | `DF.new(a: [1, 2])` | `Latu.create_dataframe(session, a: [1, 2])` |
 | `DF.from_csv("f.csv")` | `Latu.read(session, format: "csv", path: "f.csv")` |
 | `DF.from_parquet(p)` | `Latu.read(session, format: "parquet", path: p)` |
-| `DF.n_rows(df)` | `Latu.count(df)` — an action, and it returns a tuple |
+| `DF.n_rows(df)` | `Latu.count(df)`, an action returning a tuple |
 | `DF.names(df)` | `Latu.columns(df)` |
 | `DF.dtypes(df)` | `Latu.dtypes(df)` |
 | `DF.select(df, ["a", "b"])` | `Latu.select(df, [:a, :b])` |
@@ -197,20 +181,16 @@ the authority.
 | `DF.print(df)` | `Latu.show(df)` |
 | `DF.describe(df)` | `Latu.describe(df)`, or `Latu.summary(df)` for percentiles |
 | `DF.sql(df, "...")` | `Latu.sql(session, "...")` |
-| `DF.to_parquet(df, p)` | `Latu.write(df, format: "parquet", path: p)` — a **server** path |
+| `DF.to_parquet(df, p)` | `Latu.write(df, format: "parquet", path: p)`, a **server** path |
 | `DF.collect(lazy)` | nothing: already lazy. The action is what runs it |
 | `DF.to_rows(df)` | `Latu.collect(df)` |
-| `DF.to_rows_stream(df)` | `Latu.stream(df)` — but one frame per batch, not one row |
-
-**Every `Latu.` call in that table is checked** — `test/latu/examples_test.exs` parses each cell
-and resolves the call at the arity shown.
+| `DF.to_rows_stream(df)` | `Latu.stream(df)`, one frame per batch rather than one row |
 
 ## Using both: the round trip
 
-This is the half that has no equivalent in the PySpark guide. Explorer is a hard dependency of
-Latu, and the Arrow boundary runs in both directions.
+Explorer is a hard dependency of Latu, and the Arrow boundary runs in both directions.
 
-### Down: `to_explorer/2`, and why it refuses
+### Down: `to_explorer/2`
 
 ```elixir
 {:ok, frame} = sales |> Latu.filter(expensive) |> Latu.to_explorer()
@@ -219,11 +199,11 @@ Latu, and the Arrow boundary runs in both directions.
 ["price", "year"] = Explorer.DataFrame.names(frame)
 ```
 
-The result is a real Explorer frame, decoded from the Arrow batches Spark already sends — no
-row-by-row conversion, and nothing lands on the BEAM heap.
+The result is a real Explorer frame, decoded from the Arrow batches Spark already sends. There
+is no row-by-row conversion, and nothing lands on the BEAM heap.
 
 **It is unbounded, and so are `collect/2` and `to_arrow/2`.** To take part of a result, bound
-the plan rather than the action — which is Spark's own idiom, `df.limit(n).collect()`:
+the plan rather than the action. That is Spark's own idiom, `df.limit(n).collect()`:
 
 ```elixir
 {:ok, frame} = session |> Latu.range(10_000) |> Latu.limit(3) |> Latu.to_explorer()
@@ -236,21 +216,9 @@ neither library does is take a row count as an argument to the action.
 
 ### Down without holding it all: `stream/2`
 
-```elixir
-total =
-  session
-  |> Latu.range(1_000)
-  |> Latu.stream()
-  |> Stream.map(&Explorer.DataFrame.n_rows/1)
-  |> Enum.sum()
-
-1_000 = total
-```
-
 One Explorer frame per Arrow batch, decoded as it arrives, and stopping early releases the
-execution on the server. This is the shape for "larger than memory, but I only need a running
-total". It raises rather than returning a tuple, since an enumeration has nowhere to put an
-error.
+execution on the server. It raises rather than returning a tuple, since an enumeration has
+nowhere to put an error. The [cookbook](cookbook.md) has the recipe.
 
 ### Up: `create_dataframe/3` takes an Explorer frame
 
@@ -264,64 +232,38 @@ local = Explorer.DataFrame.new(city: ["Melbourne", "Hobart"], pop: [5_200_000, 2
 ```
 
 Explorer writes the same Arrow IPC stream format Spark reads, so this is a dump and a send. Big
-enough frames escalate to session artifacts automatically, which is PySpark's own behaviour.
+enough frames escalate to session artifacts automatically, as they do in PySpark.
 
-One cost worth knowing: below the server's threshold the Arrow bytes travel **inside the plan**,
-so the frame — and every frame derived from it — retains them, and they are re-sent on every
+One cost worth knowing: below the server's threshold the Arrow bytes travel **inside the plan**.
+The frame retains them, so does every frame derived from it, and they are re-sent on every
 action. A local frame that is small but not tiny is the one that sits in your memory.
 
 ### Where to put the boundary
 
-The division that works: **Spark for the scan, the shuffle and the join; Explorer for the last
-mile.** Aggregate on the cluster until the result is small, then bring it down and stay in
-Elixir for plotting, `Nx`, or a Livebook table. `Latu.agg/2` before `Latu.to_explorer/2` is the
-whole pattern; nothing stops you doing it the other way round, so this is the one place to be
-deliberate — `Latu.count/1` costs one round trip and tells you what you are about to pull.
+**Spark for the scan, the shuffle and the join; Explorer for the last mile.** Aggregate on the
+cluster until the result is small, then bring it down and stay in Elixir for plotting, `Nx`, or
+a Livebook table. `Latu.agg/2` before `Latu.to_explorer/2` is the whole pattern. `Latu.count/1`
+costs one round trip and tells you what you are about to pull.
 
 ## Why isn't Latu an Explorer backend?
 
-Explorer's own README lists remote backends, Spark included, as forthcoming — so this is a fair
-question, and the answer is that they are different contracts rather than that it would be hard.
-
-**The API is Spark's vocabulary, by a recorded precedence.** An Explorer backend has to present
-Explorer's API, which is dplyr's and Polars': `mutate`, `summarise`, `arrange`, `discard`. Latu
-resolves every naming question as Spark > Elixir > Polars > dplyr, so it says `with_columns`,
-`agg`, `sort`, `drop` — and a user who knows Spark can guess them. Both are defensible; they
-cannot both be the same library.
-
-**The query DSL cannot carry Spark's expression surface.** Explorer's macros support a bounded
-set of `Explorer.Series` operations. Spark has ~500 functions, windows, `MergeInto`, subqueries
-and SQL parsing, and Latu's answer is expressions-as-values precisely so that surface stays
-ordinary Elixir. A macro would have to grow a case per feature.
-
-**A backend is in-process; a session is not.** An `Explorer.Backend` is a local computation.
-Latu hands out a gRPC channel and server-side resources with lifecycles — `disconnect/2`,
-`release_session/2`, `with_checkpoint/3`. That belongs in the caller's hands, not behind a
-uniform local API.
-
-What Latu *does* implement of that seam is the useful part: the Arrow boundary, in both
-directions, with no conversion layer in between. `docs/decisions.md` has the argument at length.
+An `Explorer.Backend` is a local computation behind Explorer's own API, and Latu is Spark's
+vocabulary over a session whose server-side resources you open and close. What it implements of
+that seam is the Arrow boundary, in both directions, with no conversion layer between.
+`docs/decisions.md` has the argument at length.
 
 ## Things that are deliberately not here
 
-**No `Explorer.Series`, no `pull/2`, no lazy/eager distinction** — covered above, each for its
-own reason.
-
-**No ADBC.** Explorer reaches databases through
-[ADBC](https://github.com/elixir-explorer/adbc); Latu reaches them through Spark's own JDBC
-sources, which means the cluster connects rather than your VM. The cookbook has the recipe.
-
-**MLlib and structured streaming** are separate packages, for reasons
-[`docs/deviations.md`](../deviations.md) and `Latu`'s moduledoc give.
+Explorer reaches databases through [ADBC](https://github.com/elixir-explorer/adbc). Latu reaches
+them through Spark's own JDBC sources, so the cluster connects rather than your VM. MLlib is
+[`latu_ml`](https://hexdocs.pm/latu_ml), a companion package on Hex. Structured streaming is
+nobody's yet. [`usage-rules.md`](../../usage-rules.md) has the rest.
 
 ## Where to go next
 
-  * [Quick start](quick-start.md) — the tour, in ten minutes
-  * [Cookbook](cookbook.md) — recipes, including the streaming and JDBC ones
-  * [Coming from PySpark](from-pyspark.md) — if you know Spark as well
-  * [Cheatsheet](../cheatsheet.cheatmd) — the whole surface, one line each
-  * [`docs/deviations.md`](../deviations.md) — every departure, and why
-  * [`usage-rules.md`](../../usage-rules.md) — the rules that are not guessable from the names
+  * [Quick start](quick-start.md). The tour, in ten minutes.
+  * [Cookbook](cookbook.md). Recipes, including the streaming and JDBC ones.
+  * [Cheatsheet](../cheatsheet.cheatmd). The whole surface, one line each.
 
 ```elixir
 {:ok, _closed} = Latu.disconnect(session)
