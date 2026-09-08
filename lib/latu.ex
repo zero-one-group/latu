@@ -2113,7 +2113,7 @@ defmodule Latu do
   @spec is_local!(DataFrame.t()) :: boolean()
   defdelegate is_local!(df), to: DataFrame
 
-  @doc "Whether the frame is a streaming source. Latu does not build one yet; the answer is no."
+  @doc "Whether the frame is a streaming source. Today only `table_changes/3` builds one."
   @spec is_streaming(DataFrame.t()) :: {:ok, boolean()} | {:error, Error.t()}
   defdelegate is_streaming(df), to: DataFrame
 

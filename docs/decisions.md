@@ -817,6 +817,8 @@ events stay unbuilt, as `MlCommand` does; the seams both packages need exist sin
 original reasoning — "PySpark manages it with process-owned state" — was corrected at M13.5: the
 streaming core is handle-based RPCs. The conclusion stands on the bracket test there.)*
 
+**Reversed 2026-09-08**, below: the bracket test was wrong, and a probe settled the rest.
+
 ## 2026-09-02 — `disconnect/2` does not release the server session by default
 
 Latu has two verbs where PySpark's `stop()` has one, and keeps them apart on purpose: a clone
@@ -1493,3 +1495,56 @@ how a version matrix silently stops covering anything.
 Gating a *test* on the server version, when one is eventually needed, compares numeric
 components. `"4.10" >= "4.2"` is false as a string and `starts_with?("4.2")` skips silently on
 every later server; the Swift client shipped both and lost its whole `TIME` suite to the second.
+
+## 2026-09-08 — Structured streaming is Latu's, minus the closure-shaped parts
+
+Reverses 2026-09-02, which made it a separate package on the bracket test. The bracket test was
+wrong. `with_stream/3` does exist: `AvailableNow` terminates by itself over a checkpointed
+source, which is incremental ETL rather than a batch query with extra steps, and for a
+processing-time trigger the bracket is start, run the caller's function, stop in `after`, where
+the function decides when it has seen enough.
+
+The rule that survived M13.5 is satisfied rather than bent. A `%Latu.StreamingQuery{}` is
+`%Latu.ML.Model{}`'s shape, a server-side object addressed by an id with commands keyed by it
+and an explicit end, and Latu still defines no GenServer, Agent, Supervisor, Registry or pool
+and declares no application callback module. What stays out is anything that *owns* a query: the
+supervised-query pattern is a cookbook recipe beside the supervised-session one, not a module
+here. Volume decides the rest. The ML split was earned by two extractors, codegen, a registry
+and 111 operators; this is one relation, four commands and about eighteen verbs, and it edits
+`Latu.Plan` and `Latu.Client.Execution` either way.
+
+**Out, on the UDF boundary and not a new one.** `foreachBatch` and `foreach` are
+`StreamingForeachFunction`, a oneof of `PythonUDF` and `ScalarScalaUDF`, so both arms carry a
+serialised object and neither has a name-based route the way a scalar UDF has
+`JavaUDF{class_name}`. Server-side listeners carry `listener_payload` bytes. Client-side
+listeners do not, so the event channel is reachable.
+
+`dev/probe_streaming.py` and `dev/probe_streaming_rejoin.py` settled the semantics before any of
+this was written, and two of the answers are decisions in their own right.
+
+**`await_termination/2` is a loop of bounded server waits, not one unbounded call.** A blocking
+streaming command sends nothing while it waits, and the server ends the stream every
+`senderMaxStreamDuration` with nothing in it: `awaitTermination(17s)` against the 5s reattach
+server cost `ExecutePlan=1 ReattachExecute=3`. So `@max_empty_reattaches` (100) bounds any such
+call at about 8 minutes there and 200 on the 2m default, and fails a healthy query with a
+`:protocol` error. Loosening that guard is the wrong fix, since it exists to catch a server no
+sender can make progress on. Sending `awaitTermination(interval_ms)` until it answers true keeps
+Spark's own semantics and never lets one `ExecutePlan` idle past the interval.
+`process_all_available/1` is the same shape, and is documented as a bounded-source verb because
+it never returns on an unbounded one.
+
+**Progress and status decode into snake-cased maps, not structs.** The JSON Spark puts on the
+Connect wire is lossy against the driver-side report: no top-level `numInputRows`,
+`inputRowsPerSecond` or `processedRowsPerSecond`, and `sources[].startOffset` as a string where
+the server's own `ProgressReporter` log writes a number. PySpark's nulls are faithful to what
+arrives. A typed struct is how those fields went missing in the first place, `startOffset` is
+polymorphic across sources, and the aggregates are summed from `sources` or omitted rather than
+invented.
+
+Two things the probes measured that the docs owe users. A streaming query outlives the client
+that started it, so `stop/1` is load-bearing and a forgotten query has no bound, where the ML
+cache refuses a fit rather than dropping a model. And `interrupt_all` does stop streaming
+queries, which makes it the session-wide kill and a hazard for anyone interrupting a batch query
+in a session that also streams.
+
+Scope, milestones and the open questions are in the project's `latu-streaming-roadmap.md`.
