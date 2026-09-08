@@ -91,6 +91,19 @@ defmodule Latu.Result.Arrow do
     end
   end
 
+  # Field numbers are declaration positions in Arrow's own schemas, which is why they are bare
+  # integers below. A union declaration takes two of them: its type tag, then its value.
+  #
+  #   Message        1 header_type, 2 header, 3 bodyLength
+  #   RecordBatch    0 length, 1 nodes, 2 buffers, 3 compression
+  #   Schema         0 endianness, 1 fields
+  #   Field          0 name, 2 type_type, 3 type, 5 children
+  #   Int            0 bitWidth, 1 is_signed
+  #   FloatingPoint  0 precision
+  #
+  # https://github.com/apache/arrow/blob/main/format/Message.fbs — Message, RecordBatch
+  # https://github.com/apache/arrow/blob/main/format/Schema.fbs — the rest
+
   # =============================================
   # Framing
   # =============================================

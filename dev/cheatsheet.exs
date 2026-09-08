@@ -55,7 +55,9 @@ defmodule Latu.Dev.Cheatsheet do
     grouped =
       module
       |> entries()
-      |> Enum.group_by(fn {_name, _arities, _summary, line} -> section_at(sections, line) end)
+      |> Enum.group_by(fn {_name, _arities, _summary, _twin?, line} ->
+        section_at(sections, line)
+      end)
 
     cards =
       sections
@@ -74,15 +76,15 @@ defmodule Latu.Dev.Cheatsheet do
   defp card(name, entries) do
     rows =
       entries
-      |> Enum.sort_by(fn {n, _a, _s, _l} -> to_string(n) end)
-      |> Enum.map_join("\n", fn {n, arities, summary, _line} ->
-        row("#{n}#{arities}", summary)
+      |> Enum.sort_by(fn {n, _a, _s, _t, _l} -> to_string(n) end)
+      |> Enum.map_join("\n", fn {n, arities, summary, twin?, _line} ->
+        row("#{n}#{arities}", summary, twin?)
       end)
 
     "### #{name || "General"}\n\n| | |\n| --- | --- |\n#{rows}\n"
   end
 
-  # `{name, "/2,3", summary, line}` per public function, with the `!` twins folded into the
+  # `{name, "/2,3", summary, twin?, line}` per public function, with the `!` twins folded into the
   # entry they raise for. A twin's own docstring is "Like `x/2`, raising on failure." — a line
   # nobody needs on a cheatsheet, and dropping it halves the page.
   defp entries(module) do
@@ -106,7 +108,7 @@ defmodule Latu.Dev.Cheatsheet do
       {_n, _a, line, doc} = Enum.min_by(clauses, &elem(&1, 2))
       twin? = Enum.any?(arities, &MapSet.member?(bangs, {to_string(name), &1}))
 
-      {name, "/" <> Enum.join(arities, ","), summary(doc, twin?), line}
+      {name, "/" <> Enum.join(arities, ","), summary(doc), twin?, line}
     end)
   end
 
@@ -114,10 +116,14 @@ defmodule Latu.Dev.Cheatsheet do
   # letting a generated file carry 48 over-long lines. A cheatsheet entry that needs more than
   # this is not a cheatsheet entry — the module page is where the sentence belongs.
   @width 98
+  @marker " **+ !**"
 
-  defp row(call, summary) do
+  # The marker is appended after clamping and its width reserved before, so a long summary
+  # loses words rather than the fact that the verb has a raising twin.
+  defp row(call, text, twin?) do
     fixed = String.length("| `#{call}` |  |")
-    "| `#{call}` | #{clamp(summary, @width - fixed)} |"
+    budget = @width - fixed - if(twin?, do: String.length(@marker), else: 0)
+    "| `#{call}` | #{clamp(text, budget)}#{if twin?, do: @marker, else: ""} |"
   end
 
   defp clamp(text, budget) do
@@ -142,27 +148,39 @@ defmodule Latu.Dev.Cheatsheet do
 
   # The first **sentence** of the docstring, which `test/latu/docs_test.exs` guarantees exists.
   # A summary that wrapped in the source is rejoined, so the cell is one line.
-  defp summary(doc, twin?) do
-    text =
-      doc
-      |> String.split("\n\n", parts: 2)
-      |> hd()
-      |> String.split("\n")
-      |> Enum.map_join(" ", &String.trim/1)
-      |> String.trim()
-      |> first_sentence()
-      |> String.replace("|", "\\|")
-
-    if twin?, do: text <> " **+ !**", else: text
+  defp summary(doc) do
+    doc
+    |> String.split("\n\n", parts: 2)
+    |> hd()
+    |> String.split("\n")
+    |> Enum.map_join(" ", &String.trim/1)
+    |> String.trim()
+    |> first_sentence()
+    |> String.replace("|", "\\|")
   end
 
-  # Splitting on ". " rather than "." keeps `e.g.` and `Latu.show` intact; a trailing full stop
-  # is put back, since the cut is the sentence's own end.
+  # Splitting on ". " rather than "." keeps `Latu.show` intact. It does not keep `e.g.` intact —
+  # that is `e.g` followed by ". " — so a part ending in an abbreviation is rejoined with the
+  # next. A trailing full stop is put back only when something was actually dropped, since the
+  # cut is then the sentence's own end.
+  @abbreviations ~w(e.g i.e cf vs etc resp)
+
   defp first_sentence(text) do
-    case String.split(text, ". ", parts: 2) do
-      [whole] -> whole
-      [first, _rest] -> first <> "."
-    end
+    parts = String.split(text, ". ")
+    taken = take_sentence(parts)
+    joined = Enum.join(taken, ". ")
+
+    if length(taken) == length(parts), do: joined, else: joined <> "."
+  end
+
+  defp take_sentence([part | rest]) when rest != [] do
+    if abbreviation?(part), do: [part | take_sentence(rest)], else: [part]
+  end
+
+  defp take_sentence(parts), do: parts
+
+  defp abbreviation?(part) do
+    Enum.any?(@abbreviations, &(part == &1 or String.ends_with?(part, " " <> &1)))
   end
 
   # `{line, name}` for every `# ====` / `# Name` / `# ====` banner, in file order.

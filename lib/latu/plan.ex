@@ -7,6 +7,11 @@ defmodule Latu.Plan do
   resolves column references by searching the analysed plan for the node carrying that id, so
   it is node identity. `normalize_ids/1` is what that costs, and only tests pay it.
 
+  Two verbs carry the subquery machinery and are met long before they are defined. `drain` and
+  `drain_all` coerce a term and split off the relations it references; `hoist` wraps a relation
+  and those references into a `WithRelations`. A reference gets there from `Latu.Subquery`, and
+  every builder that takes an expression has to drain it.
+
   ## Public and pure, on purpose
 
   **You can build a plan and look at it without a server, and that is a feature rather than an
@@ -273,23 +278,7 @@ defmodule Latu.Plan do
   defp path(path) when is_binary(path), do: path
   defp path(path), do: raise(ArgumentError, "a path is a string, not #{inspect(path)}")
 
-  defp table_name(name) when is_binary(name), do: name
-
-  defp table_name(name) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
-    Atom.to_string(name)
-  end
-
-  defp table_name(name), do: name_of(name, "table name")
-
-  defp name_of(name, _what) when is_binary(name), do: name
-
-  defp name_of(name, _what) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
-    Atom.to_string(name)
-  end
-
-  defp name_of(name, what) do
-    raise ArgumentError, "a #{what} is a string or an atom, not #{inspect(name)}"
-  end
+  defp table_name(name), do: identifier(name, "table name")
 
   @doc "Read a catalog table by name, with `to_options/1` options."
   @spec table(String.t() | atom(), keyword() | map()) :: relation()
@@ -318,7 +307,7 @@ defmodule Latu.Plan do
   end
 
   def sql(query, args, views) when is_binary(query) and is_map(args) and not is_struct(args) do
-    named = Map.new(args, fn {name, value} -> {name_of(name, "argument name"), lit(value)} end)
+    named = Map.new(args, fn {name, value} -> {identifier(name, "argument name"), lit(value)} end)
 
     with_views(%Proto.SQL{query: query, named_arguments: named}, views)
   end
@@ -1372,7 +1361,7 @@ defmodule Latu.Plan do
   defp assignments(_action, set) do
     Enum.map(set, fn {key, value} ->
       %Proto.MergeAction.Assignment{
-        key: expr(name_of(key, "merge assignment key")),
+        key: expr(identifier(key, "merge assignment key")),
         value: grounded(value, :set)
       }
     end)
@@ -1621,7 +1610,7 @@ defmodule Latu.Plan do
 
     view = %Proto.CreateDataFrameViewCommand{
       input: input,
-      name: name_of(name, "view name"),
+      name: identifier(name, "view name"),
       is_global: flag(opts[:global], :global),
       replace: flag(opts[:replace], :replace)
     }
