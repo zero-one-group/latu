@@ -8,6 +8,7 @@ defmodule Latu.SessionTest do
   doctest Latu.Session
 
   @uuid "8c9d2f1e-0000-4000-8000-000000000001"
+  @max_user_agent 2048
 
   describe "from_url/2 — host and port" do
     test "defaults the port to Spark Connect's 15002" do
@@ -39,7 +40,7 @@ defmodule Latu.SessionTest do
       assert session.use_ssl
       assert session.token == "s3cr3t"
       assert session.user_id == "alice"
-      assert session.client_type == "custom/1.0"
+      assert session.client_type =~ ~r"^custom/1\.0 latu/"
       assert session.session_id == @uuid
     end
 
@@ -158,6 +159,28 @@ defmodule Latu.SessionTest do
       {:ok, session} = Session.from_url("sc://h")
       assert session.client_type != ""
       assert byte_size(session.client_type) <= 2048
+    end
+
+    test "a user_agent is prepended to Latu's identity, not swapped for it" do
+      {:ok, plain} = Session.from_url("sc://h")
+      {:ok, session} = Session.from_url("sc://h/;user_agent=my-app/2.1")
+
+      assert session.client_type == "my-app/2.1 " <> plain.client_type
+    end
+
+    test "a user_agent over Spark's limit is refused, escaped length being what counts" do
+      long = String.duplicate("a", @max_user_agent + 1)
+
+      assert {:error, %Error{kind: :invalid_url, message: message}} =
+               Session.from_url("sc://h/;user_agent=#{long}")
+
+      assert message =~ "at most #{@max_user_agent} bytes"
+
+      # A space escapes to three bytes, so 683 spaces is over the limit at 683 characters.
+      spaces = URI.encode(String.duplicate(" ", 683), &URI.char_unreserved?/1)
+
+      assert {:error, %Error{kind: :invalid_url}} =
+               Session.from_url("sc://h/;user_agent=#{spaces}")
     end
 
     test "options override the URL" do

@@ -1,0 +1,11 @@
+# schema
+record struct<a:int,b:string> not null
+list array<int> not null
+lookup map<string,int> not null
+
+# rows
++------+---------+--------+
+|record|list     |lookup  |
++------+---------+--------+
+|{1, x}|[1, 2, 3]|{k -> 1}|
++------+---------+--------+

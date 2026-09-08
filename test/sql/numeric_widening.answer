@@ -1,0 +1,11 @@
+# schema
+decimal_sum decimal(3,1) nullable
+division double nullable
+tinyint_sum tinyint not null
+
+# rows
++-----------+------------------+-----------+
+|decimal_sum|division          |tinyint_sum|
++-----------+------------------+-----------+
+|2.5        |0.3333333333333333|2          |
++-----------+------------------+-----------+

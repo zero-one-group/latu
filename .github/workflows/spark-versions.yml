@@ -1,0 +1,82 @@
+# The forward-compatibility run: the integration suite against a Spark newer than the one Latu
+# targets. On demand, never on a PR — red here is upstream news, not a broken change. Why there
+# is no cron, why forward and not backward, and why the goldens only report: docs/decisions.md.
+name: Spark versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: JSON array of apache/spark image tags
+        default: '["4.2.0"]'
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: Spark ${{ matrix.spark }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        spark: ${{ fromJSON(inputs.versions) }}
+    env:
+      SPARK_VERSION: ${{ matrix.spark }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: docker compose up -d
+
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+      - run: python3 -m venv dev/.venv && dev/.venv/bin/pip install -q -r dev/requirements.txt
+      - run: mix fixtures
+      - run: docker compose up -d --wait
+
+      # Everything but the goldens asserts: a crash or a semantic break on a newer server is a
+      # real failure. The goldens are rendering, which a new Spark is allowed to change.
+      - run: mix test --include integration
+
+      - name: Result goldens
+        run: LATU_GOLDEN=report mix test --include golden
+
+      - name: Golden diff
+        if: always()
+        run: |
+          {
+            echo "## Result goldens on Spark ${{ matrix.spark }}"
+            echo
+            changed=0
+            for actual in test/sql/*.actual; do
+              [ -e "$actual" ] || continue
+              name=$(basename "$actual" .actual)
+              if ! diff -q "test/sql/$name.answer" "$actual" >/dev/null 2>&1; then
+                changed=1
+                printf '<details><summary><code>%s</code></summary>\n\n```diff\n' "$name"
+                diff -u "test/sql/$name.answer" "$actual" || true
+                printf '```\n\n</details>\n\n'
+              fi
+            done
+            if [ "$changed" -eq 0 ]; then
+              echo "Identical to the committed goldens."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Spark logs
+        if: failure()
+        run: docker compose logs --no-color --tail=200

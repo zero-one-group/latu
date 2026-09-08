@@ -1420,3 +1420,76 @@ in `latu_ml`'s `dev/probe_ext.exs`, where an ML estimator uploaded this way was 
 the driver and then failed inside its own Spark job with `ClassNotFound`. Code that has to run
 in a task wants the jar on the cluster's classpath, and the docstring says so rather than
 letting a caller find out from a stage failure.
+
+## 2026-09-08 — `user_agent` composes with Latu's identity rather than replacing it
+
+`sc://h/;user_agent=my-app` used to *become* `client_type`, so the string identifying the client
+— `latu/x elixir/y otp/z` — vanished the moment a caller named their app. PySpark composes
+(`{agent} spark/{v} os/{os} python/{v}`), and server-side telemetry and some gateways read the
+field, so Latu now prepends: `my-app latu/x elixir/y otp/z`.
+
+The `client_type:` option still replaces the whole string. Two knobs, two meanings: the URL
+param says "and this is my app", the option says "this is the whole identity".
+
+A user agent over 2048 bytes **once percent-escaped** is refused rather than truncated. That is
+PySpark's cap, and it is measured after escaping because that is the form travelling in the URL.
+`lib/latu/session.ex`.
+
+## 2026-09-08 — Vendored protos are pinned to a Spark tag, and CI checks they have not drifted
+
+`priv/proto/spark/connect/*.proto` is copied from Apache Spark, and `mix proto.generate` turns it
+into `lib/latu/protocol/generated/`. The tag it came from was recorded only in prose, so nothing
+could tell a clean copy from a hand-edited one, from a half-finished re-vendor that mixed two
+tags. `priv/proto/VERSION` names the tag; `dev/check_protos.sh` fetches each vendored file from
+it and refuses on any difference. Its own CI job, because a GitHub outage must not be able to
+fail `mix check.all`, and it needs no BEAM.
+
+**Scope, stated narrowly, because it is easy to over-read.** A git tag is immutable, so this can
+only ever fire at the moment someone re-vendors: it catches a hand-edit, a partial copy, and a
+`VERSION` naming a tag the files did not come from. It does **not** catch the failure that
+actually bites clients — protos that changed correctly while the code calling them did not keep
+up. The Swift client shipped that one (#443, a `relation` field moved into a `details` oneof and
+the assignment setting it was commented out during regeneration and never restored, so flows were
+defined with no query), and its vendored protos were byte-perfect throughout. What catches that
+class here is `test/wire`: a dropped assignment changes the emitted plan, and a golden fails.
+This guard protects the *input* to `mix proto.generate`; the goldens protect the output.
+
+It guards drift in what Latu vendors, not files it does not. A new proto upstream is an adoption
+question, not a correctness one.
+
+## 2026-09-08 — Newer Spark is tested, older Spark is not, and the result goldens report there
+
+Latu targets 4.2.0 and the README says so. Testing 3.5/4.0/4.1 would not verify that claim, it
+would make a new one: `ChunkedCachedLocalRelation`, `zip_with_index`, the geometry refusals and
+`time` in the decodable set are 4.1+ or 4.2+ surface, so a backward matrix buys a support
+commitment and a layer of version gates for users nobody promised anything to.
+
+Forward is the opposite trade, because what breaks a client on a newer server is invisible to a
+golden that pins what Latu sends — the bytes are unchanged and the *answer* moves. Two shapes,
+both only reachable by running against that server: semantics changing under an unchanged wire
+shape (`isLocal` flipped in 4.1, SPARK-51818), and a new server-side *requirement* — 4.3 rejects
+an uploaded `TIME(p)` column without `SPARK::time::precision` Arrow metadata, which Polars does
+not write. A field a newer server has started ignoring lands here too, but behaviourally, and
+only where a test covers that surface. `.github/workflows/spark-versions.yml` runs the
+integration suite against tags given as an input, on demand and never on a PR: red there is
+upstream news, not a broken change.
+
+No cron. A weekly run against the one version `mix check.all` already covers is a green job that
+teaches you to ignore it, which is the failure this whole entry is written against. The schedule
+goes in when there is a second tag to put in it.
+
+**Result goldens are what make such a run informative.** `test/wire` pins what Latu *sends*;
+`test/sql` pins what the server *answers* — schema and rendered table, for deterministic queries
+covering numeric widening, decimal and temporal rendering, null display, complex types, cast
+semantics, and the interval types the Arrow decoder refuses but `show` renders. The schema half
+is not decoration: `show` renders values, so a column whose *type* changed between servers
+renders byte-identically.
+
+On the target version they assert. On a newer one they only **report** — `LATU_GOLDEN=report`
+writes a `.actual` beside each `.answer` and the job diffs them into the run summary — because a
+new Spark is allowed to change its rendering, and a job going red for that gets muted, which is
+how a version matrix silently stops covering anything.
+
+Gating a *test* on the server version, when one is eventually needed, compares numeric
+components. `"4.10" >= "4.2"` is false as a string and `starts_with?("4.2")` skips silently on
+every later server; the Swift client shipped both and lost its whole `TIME` suite to the second.

@@ -1,0 +1,11 @@
+# schema
+bare void nullable
+in_array array<int> not null
+in_map map<string,int> not null
+
+# rows
++----+------------+-----------+
+|bare|in_array    |in_map     |
++----+------------+-----------+
+|NULL|[1, NULL, 3]|{k -> NULL}|
++----+------------+-----------+
