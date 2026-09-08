@@ -1269,12 +1269,7 @@ defmodule Latu.DataFrame do
 
   @doc "Like `print_schema/2`, raising on failure."
   @spec print_schema!(t(), keyword()) :: :ok
-  def print_schema!(%__MODULE__{} = df, opts \\ []) do
-    case print_schema(df, opts) do
-      :ok -> :ok
-      {:error, error} -> raise error
-    end
-  end
+  def print_schema!(%__MODULE__{} = df, opts \\ []), do: run!(print_schema(df, opts))
 
   @doc "See `Latu.explain/2`."
   @spec explain(t(), keyword()) :: :ok | {:error, Error.t()}
@@ -1284,12 +1279,7 @@ defmodule Latu.DataFrame do
 
   @doc "Like `explain/2`, raising on failure."
   @spec explain!(t(), keyword()) :: :ok
-  def explain!(%__MODULE__{} = df, opts \\ []) do
-    case explain(df, opts) do
-      :ok -> :ok
-      {:error, error} -> raise error
-    end
-  end
+  def explain!(%__MODULE__{} = df, opts \\ []), do: run!(explain(df, opts))
 
   @doc "See `Latu.explain_string/2`."
   @spec explain_string(t(), keyword()) :: {:ok, String.t()} | {:error, Error.t()}
@@ -1460,12 +1450,7 @@ defmodule Latu.DataFrame do
 
   @doc "Like `show/2`, raising on failure."
   @spec show!(t(), keyword()) :: :ok
-  def show!(%__MODULE__{} = df, opts \\ []) do
-    case show(df, opts) do
-      :ok -> :ok
-      {:error, error} -> raise error
-    end
-  end
+  def show!(%__MODULE__{} = df, opts \\ []), do: run!(show(df, opts))
 
   @doc """
   See `Latu.to_html/2`.
@@ -1502,12 +1487,7 @@ defmodule Latu.DataFrame do
 
   @doc "Like `glimpse/2`, raising on failure."
   @spec glimpse!(t(), keyword()) :: :ok
-  def glimpse!(%__MODULE__{} = df, opts \\ []) do
-    case glimpse(df, opts) do
-      :ok -> :ok
-      {:error, error} -> raise error
-    end
-  end
+  def glimpse!(%__MODULE__{} = df, opts \\ []), do: run!(glimpse(df, opts))
 
   # Public so the rendering can be checked with no server — `count_plan/1`'s precedent, and the
   # rendering *is* the feature here. Not API.
@@ -1690,9 +1670,10 @@ defmodule Latu.DataFrame do
   defp run_write(%__MODULE__{} = df, command, opts) do
     refuse_observed!(df)
 
-    with {:ok, _execution} <- run_command(df, command, watch(opts)), do: :ok
+    with {:ok, _execution} <- run_command(df, command, opts), do: :ok
   end
 
+  # Applies `watch/1` itself, so a caller may hand it whatever option list it holds.
   defp run_command(%__MODULE__{} = df, command, opts \\ []) do
     Client.execute_command(df.session, Plan.new(command), watch(opts))
   end

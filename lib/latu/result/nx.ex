@@ -224,7 +224,6 @@ if Code.ensure_loaded?(Nx) do
     # =============================================
 
     defp build(name, pieces, pruned?) do
-      pieces = Enum.reverse(pieces)
       {types, widths, rows, binaries} = unzip(pieces)
 
       cond do
@@ -246,8 +245,10 @@ if Code.ensure_loaded?(Nx) do
       end
     end
 
+    # `piece/3` prepends, so `pieces` is newest-first and the fold's own prepending is the one
+    # reversal that puts `binaries` back in batch order — `flatten/2` concatenates blind.
     defp unzip(pieces) do
-      Enum.reduce(Enum.reverse(pieces), {[], [], [], []}, fn {t, w, r, b}, {ts, ws, rs, bs} ->
+      Enum.reduce(pieces, {[], [], [], []}, fn {t, w, r, b}, {ts, ws, rs, bs} ->
         {[t | ts], [w | ws], [r | rs], [b | bs]}
       end)
     end

@@ -127,18 +127,16 @@ defmodule Latu.Result.Arrow do
     header_type = field_u8(metadata, message, 1, 0)
     body_length = field_i64(metadata, message, 3, 0)
 
-    cond do
-      byte_size(tail) < body_length ->
-        {:error, "a message claims a #{body_length}-byte body and #{byte_size(tail)} remain"}
+    if byte_size(tail) < body_length do
+      {:error, "a message claims a #{body_length}-byte body and #{byte_size(tail)} remain"}
+    else
+      body = binary_part(tail, 0, body_length)
+      rest = binary_part(tail, body_length, byte_size(tail) - body_length)
 
-      true ->
-        body = binary_part(tail, 0, body_length)
-        rest = binary_part(tail, body_length, byte_size(tail) - body_length)
-
-        case field(metadata, message, 2) do
-          nil -> {:error, "a message carries no header"}
-          pos -> messages(rest, [{header_type, metadata, indirect(metadata, pos), body} | acc])
-        end
+      case field(metadata, message, 2) do
+        nil -> {:error, "a message carries no header"}
+        pos -> messages(rest, [{header_type, metadata, indirect(metadata, pos), body} | acc])
+      end
     end
   end
 

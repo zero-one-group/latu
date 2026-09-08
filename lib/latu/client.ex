@@ -44,7 +44,7 @@ defmodule Latu.Client do
   def connect(%Session{channel: nil} = session) do
     with :ok <- check_token_transport(session),
          {:ok, opts} <- connect_opts(session),
-         {:ok, channel} <- open(target(session), opts) do
+         {:ok, channel} <- open_channel(target(session), opts) do
       {:ok, %{session | channel: channel}}
     end
   end
@@ -147,26 +147,11 @@ defmodule Latu.Client do
   """
   @spec analyze(Session.t(), tuple()) ::
           {:ok, struct(), Session.t()} | {:error, Error.t()}
-  def analyze(%Session{channel: nil}, _arm) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def analyze(%Session{channel: nil}, _arm), do: {:error, not_connected()}
 
   def analyze(%Session{} = session, arm) do
-    request = %Proto.AnalyzePlanRequest{
-      session_id: session.session_id,
-      client_observed_server_side_session_id: session.server_session_id,
-      user_context: user_context(session),
-      client_type: session.client_type,
-      analyze: arm
-    }
-
-    call = fn -> Stub.analyze_plan(session.channel, request, timeout: session.timeout) end
-
-    with {:ok, response} <- retrying("AnalyzePlan", session, call),
-         {:ok, session} <-
-           Session.confirm(session, response.session_id, response.server_side_session_id) do
-      {:ok, response, session}
-    end
+    request = %Proto.AnalyzePlanRequest{analyze: arm}
+    unary(session, "AnalyzePlan", request, &Stub.analyze_plan/3)
   end
 
   @doc """
@@ -208,22 +193,20 @@ defmodule Latu.Client do
           {:ok, [batch()], Execution.t()} | {:error, Error.t()}
   def execute(session, plan, opts \\ [])
 
-  def execute(%Session{channel: nil}, _plan, _opts) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def execute(%Session{channel: nil}, _plan, _opts), do: {:error, not_connected()}
 
   def execute(%Session{} = session, %Proto.Plan{} = plan, opts) do
     session
     |> responses(plan)
     |> watched(opts)
-    |> Enum.reduce_while({:ok, []}, fn
-      {:ok, batch}, {:ok, batches} -> {:cont, {:ok, [batch | batches]}}
-      {:done, execution}, {:ok, batches} -> {:halt, {:ok, Enum.reverse(batches), execution}}
+    |> Enum.reduce_while({:running, []}, fn
+      {:ok, batch}, {:running, batches} -> {:cont, {:running, [batch | batches]}}
+      {:done, execution}, {:running, batches} -> {:halt, {:ok, Enum.reverse(batches), execution}}
       {:error, error}, _acc -> {:halt, {:error, error}}
       _tagged, acc -> {:cont, acc}
     end)
     |> case do
-      {:ok, _batches} ->
+      {:running, _batches} ->
         {:error, Error.new(:protocol, "the response stream stopped unaccountably")}
 
       result ->
@@ -245,9 +228,7 @@ defmodule Latu.Client do
           {:ok, Execution.t()} | {:error, Error.t()}
   def execute_command(session, plan, opts \\ [])
 
-  def execute_command(%Session{channel: nil}, _plan, _opts) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def execute_command(%Session{channel: nil}, _plan, _opts), do: {:error, not_connected()}
 
   def execute_command(%Session{} = session, %Proto.Plan{} = plan, opts) do
     session
@@ -289,24 +270,14 @@ defmodule Latu.Client do
   """
   @spec config(Session.t(), config_op()) ::
           {:ok, [{String.t(), String.t() | nil}], Session.t()} | {:error, Error.t()}
-  def config(%Session{channel: nil}, _op) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def config(%Session{channel: nil}, _op), do: {:error, not_connected()}
 
   def config(%Session{} = session, op) when is_tuple(op) do
     request = %Proto.ConfigRequest{
-      session_id: session.session_id,
-      client_observed_server_side_session_id: session.server_session_id,
-      user_context: user_context(session),
-      client_type: session.client_type,
       operation: %Proto.ConfigRequest.Operation{op_type: config_op(op)}
     }
 
-    call = fn -> Stub.config(session.channel, request, timeout: session.timeout) end
-
-    with {:ok, response} <- retrying("Config", session, call),
-         {:ok, session} <-
-           Session.confirm(session, response.session_id, response.server_side_session_id) do
+    with {:ok, response, session} <- unary(session, "Config", request, &Stub.config/3) do
       warn(op, response.warnings)
       {:ok, Enum.map(response.pairs, &{&1.key, &1.value}), session}
     end
@@ -384,24 +355,12 @@ defmodule Latu.Client do
   """
   @spec interrupt(Session.t(), keyword()) ::
           {:ok, [String.t()], Session.t()} | {:error, Error.t()}
-  def interrupt(%Session{channel: nil}, _opts) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def interrupt(%Session{channel: nil}, _opts), do: {:error, not_connected()}
 
   def interrupt(%Session{} = session, opts) when is_list(opts) do
-    request = %Proto.InterruptRequest{
-      session_id: session.session_id,
-      client_observed_server_side_session_id: session.server_session_id,
-      user_context: user_context(session),
-      client_type: session.client_type
-    }
+    request = struct!(%Proto.InterruptRequest{}, interrupt_scope(opts))
 
-    request = struct!(request, interrupt_scope(opts))
-    call = fn -> Stub.interrupt(session.channel, request, timeout: session.timeout) end
-
-    with {:ok, response} <- retrying("Interrupt", session, call),
-         {:ok, session} <-
-           Session.confirm(session, response.session_id, response.server_side_session_id) do
+    with {:ok, response, session} <- unary(session, "Interrupt", request, &Stub.interrupt/3) do
       {:ok, response.interrupted_ids, session}
     end
   end
@@ -428,9 +387,7 @@ defmodule Latu.Client do
   """
   @spec status(Session.t(), [String.t()]) ::
           {:ok, [%{operation_id: String.t(), state: atom()}], Session.t()} | {:error, Error.t()}
-  def status(%Session{channel: nil}, _operation_ids) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def status(%Session{channel: nil}, _operation_ids), do: {:error, not_connected()}
 
   def status(%Session{} = session, operation_ids) when is_list(operation_ids) do
     request = %Proto.GetStatusRequest{
@@ -489,9 +446,7 @@ defmodule Latu.Client do
   """
   @spec clone_session(Session.t(), keyword()) ::
           {:ok, Session.t(), Session.t()} | {:error, Error.t()}
-  def clone_session(%Session{channel: nil}, _opts) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def clone_session(%Session{channel: nil}, _opts), do: {:error, not_connected()}
 
   def clone_session(%Session{} = session, opts) when is_list(opts) do
     opts = Keyword.validate!(opts, [:session_id])
@@ -548,9 +503,7 @@ defmodule Latu.Client do
   End the session on the server. See `Latu.release_session/2`.
   """
   @spec release_session(Session.t(), keyword()) :: {:ok, Session.t()} | {:error, Error.t()}
-  def release_session(%Session{channel: nil}, _opts) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def release_session(%Session{channel: nil}, _opts), do: {:error, not_connected()}
 
   def release_session(%Session{} = session, opts) when is_list(opts) do
     release_session(session, opts, &retrying/3)
@@ -585,9 +538,7 @@ defmodule Latu.Client do
   """
   @spec cache_artifacts(Session.t(), [binary()]) ::
           {:ok, [String.t()], Session.t()} | {:error, Error.t()}
-  def cache_artifacts(%Session{channel: nil}, _blobs) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def cache_artifacts(%Session{channel: nil}, _blobs), do: {:error, not_connected()}
 
   def cache_artifacts(%Session{} = session, blobs) when is_list(blobs) do
     hashes = Enum.map(blobs, &sha256/1)
@@ -613,9 +564,7 @@ defmodule Latu.Client do
   A jar cannot be replaced in a live session.
   """
   @spec add_jar(Session.t(), String.t(), binary()) :: {:ok, Session.t()} | {:error, Error.t()}
-  def add_jar(%Session{channel: nil}, _name, _contents) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def add_jar(%Session{channel: nil}, _name, _contents), do: {:error, not_connected()}
 
   def add_jar(%Session{} = session, name, contents)
       when is_binary(name) and is_binary(contents) do
@@ -633,19 +582,10 @@ defmodule Latu.Client do
   end
 
   defp artifact_statuses(%Session{} = session, hashes) do
-    request = %Proto.ArtifactStatusesRequest{
-      session_id: session.session_id,
-      client_observed_server_side_session_id: session.server_session_id,
-      user_context: user_context(session),
-      client_type: session.client_type,
-      names: Enum.map(hashes, &("cache/" <> &1))
-    }
+    request = %Proto.ArtifactStatusesRequest{names: Enum.map(hashes, &("cache/" <> &1))}
 
-    call = fn -> Stub.artifact_status(session.channel, request, timeout: session.timeout) end
-
-    with {:ok, response} <- retrying("ArtifactStatus", session, call),
-         {:ok, session} <-
-           Session.confirm(session, response.session_id, response.server_side_session_id) do
+    with {:ok, response, session} <-
+           unary(session, "ArtifactStatus", request, &Stub.artifact_status/3) do
       cached =
         for hash <- hashes,
             status = response.statuses["cache/" <> hash],
@@ -697,25 +637,26 @@ defmodule Latu.Client do
   # on it: `cache/` for a blob a plan references by hash, `jars/` for `sparkContext.addJar`.
   def artifact_requests(session, artifacts, prefix \\ "cache/")
 
+  # `batch` holds the small blobs not yet packed into a request, `groups` the runs of requests
+  # already settled. Both fill front-first and unwind once at the end.
   def artifact_requests(%Session{} = session, artifacts, prefix) do
-    {requests, batch, _size} =
-      Enum.reduce(artifacts, {[], [], 0}, fn {name, blob}, {requests, batch, size} ->
+    {groups, batch, _size} =
+      Enum.reduce(artifacts, {[], [], 0}, fn {name, blob}, {groups, batch, size} ->
         cond do
           byte_size(blob) > @artifact_chunk_size ->
-            {requests ++
-               flush_batch(session, batch) ++ chunked_requests(session, prefix, name, blob), [],
-             0}
+            chunked = chunked_requests(session, prefix, name, blob)
+            {[chunked, flush_batch(session, batch) | groups], [], 0}
 
           size + byte_size(blob) > @artifact_chunk_size ->
-            {requests ++ flush_batch(session, batch), [single(prefix, name, blob)],
+            {[flush_batch(session, batch) | groups], [single(prefix, name, blob)],
              byte_size(blob)}
 
           true ->
-            {requests, batch ++ [single(prefix, name, blob)], size + byte_size(blob)}
+            {groups, [single(prefix, name, blob) | batch], size + byte_size(blob)}
         end
       end)
 
-    requests ++ flush_batch(session, batch)
+    [flush_batch(session, batch) | groups] |> Enum.reverse() |> Enum.concat()
   end
 
   defp single(prefix, name, blob) do
@@ -727,10 +668,10 @@ defmodule Latu.Client do
 
   defp flush_batch(_session, []), do: []
 
+  # The buffer fills front-first; the wire wants the artifacts in the order they were given.
   defp flush_batch(%Session{} = session, singles) do
-    [
-      artifact_request(session, {:batch, %Proto.AddArtifactsRequest.Batch{artifacts: singles}})
-    ]
+    batch = %Proto.AddArtifactsRequest.Batch{artifacts: Enum.reverse(singles)}
+    [artifact_request(session, {:batch, batch})]
   end
 
   defp chunked_requests(%Session{} = session, prefix, name, blob) do
@@ -788,7 +729,7 @@ defmodule Latu.Client do
   # not connected, since an enumeration cannot return an error. Internal contract, consumed by
   # `execute/2` and `Latu.DataFrame.stream/2`.
   def responses(%Session{channel: nil}, _plan) do
-    raise Error.new(:connect, "session is not connected; call Latu.connect/1 first")
+    raise not_connected()
   end
 
   def responses(%Session{} = session, %Proto.Plan{} = plan) do
@@ -857,36 +798,40 @@ defmodule Latu.Client do
   end
 
   defp handle(state, event) do
-    seen_schema = state.execution.schema
-    seen_result = state.execution.command_result
-    seen_progress = state.execution.progress
-    seen_retries = state.execution.retries
-    {action, execution} = Execution.step(state.execution, event)
-    attempted(action, seen_retries, execution)
+    seen = state.execution
+    {action, execution} = Execution.step(seen, event)
+    attempted(action, seen.retries, execution)
     {elements, state} = act(action, %{state | execution: execution})
 
     elements =
-      case execution.command_result do
-        ^seen_result -> elements
-        relation -> [{:command_result, relation} | elements]
-      end
+      elements
+      |> latched(:command_result, seen, execution)
+      |> progressed(seen, execution)
+      |> latched(:schema, seen, execution)
 
-    elements =
-      case execution.progress do
-        ^seen_progress ->
-          elements
+    {elements, state}
+  end
 
-        progress ->
-          progress = Progress.new(progress)
-          Telemetry.progress(Progress.percent(progress), ids(execution))
+  # A field the state machine latches: it takes a value once, and taking it is the element. Last
+  # prepended comes out first, so `:schema` is applied last — the order `responses/2` promises.
+  defp latched(elements, field, seen, execution) do
+    value = Map.fetch!(execution, field)
 
-          [{:progress, progress} | elements]
-      end
-
-    case execution.schema do
-      ^seen_schema -> {elements, state}
-      schema -> {[{:schema, schema} | elements], state}
+    case Map.fetch!(seen, field) do
+      ^value -> elements
+      _unset -> [{field, value} | elements]
     end
+  end
+
+  # Latched like the rest, but the value is wrapped on the way out and the change is an event of
+  # its own, so it keeps its own clause.
+  defp progressed(elements, %{progress: seen}, %{progress: now}) when seen === now, do: elements
+
+  defp progressed(elements, _seen, execution) do
+    progress = Progress.new(execution.progress)
+    Telemetry.progress(Progress.percent(progress), ids(execution))
+
+    [{:progress, progress} | elements]
   end
 
   defp act({:emit, batch}, state) do
@@ -1076,6 +1021,36 @@ defmodule Latu.Client do
     %Proto.UserContext{user_id: session.user_id, user_name: session.user_name}
   end
 
+  defp not_connected do
+    Error.new(:connect, "session is not connected; call Latu.connect/1 first")
+  end
+
+  # The envelope every unary RPC shares: the four session fields on the request, the session's
+  # retry policy around the call, and the id check on what comes back. The caller puts its own
+  # fields on `request` and hands over the `Stub` function to call. What does not fit says so
+  # where it stands: `release_session/3` has a timeout and a transport of its own, `status/2`
+  # and `clone_session/2` explain away a session the server never made, and `add_artifacts/3`
+  # is client-streaming.
+  defp unary(%Session{channel: nil}, _name, _request, _stub), do: {:error, not_connected()}
+
+  defp unary(%Session{} = session, name, request, stub) do
+    request =
+      struct!(request,
+        session_id: session.session_id,
+        client_observed_server_side_session_id: session.server_session_id,
+        user_context: user_context(session),
+        client_type: session.client_type
+      )
+
+    call = fn -> stub.(session.channel, request, timeout: session.timeout) end
+
+    with {:ok, response} <- retrying(name, session, call),
+         {:ok, session} <-
+           Session.confirm(session, response.session_id, response.server_side_session_id) do
+      {:ok, response, session}
+    end
+  end
+
   @doc false
   # Every RPC that asks the server for something is retried on the session's policy, as
   # PySpark's `Retrying` wraps every call. Not the two that open a result stream —
@@ -1194,28 +1169,17 @@ defmodule Latu.Client do
   The full server-side cause chain for an error. See `Latu.error_details/2`.
   """
   @spec error_details(Session.t(), Error.t()) :: {:ok, Error.t()} | {:error, Error.t()}
-  def error_details(%Session{channel: nil}, %Error{}) do
-    {:error, Error.new(:connect, "session is not connected; call Latu.connect/1 first")}
-  end
+  def error_details(%Session{channel: nil}, %Error{}), do: {:error, not_connected()}
 
   def error_details(%Session{}, %Error{error_id: nil} = error) do
     {:ok, error}
   end
 
   def error_details(%Session{} = session, %Error{error_id: id} = error) do
-    request = %Proto.FetchErrorDetailsRequest{
-      session_id: session.session_id,
-      client_observed_server_side_session_id: session.server_session_id,
-      user_context: user_context(session),
-      client_type: session.client_type,
-      error_id: id
-    }
+    request = %Proto.FetchErrorDetailsRequest{error_id: id}
 
-    call = fn -> Stub.fetch_error_details(session.channel, request, timeout: session.timeout) end
-
-    with {:ok, response} <- retrying("FetchErrorDetails", session, call),
-         {:ok, _session} <-
-           Session.confirm(session, response.session_id, response.server_side_session_id) do
+    with {:ok, response, _session} <-
+           unary(session, "FetchErrorDetails", request, &Stub.fetch_error_details/3) do
       {:ok, filled(error, Enum.map(causes(response), &cause/1))}
     end
   end
@@ -1240,27 +1204,24 @@ defmodule Latu.Client do
   defp causes(%Proto.FetchErrorDetailsResponse{root_error_idx: nil}), do: []
 
   defp causes(%Proto.FetchErrorDetailsResponse{} = response) do
-    chain(response.errors, response.root_error_idx, [])
+    chain(response.errors, response.root_error_idx, MapSet.new(), [])
   end
 
-  defp chain(errors, index, seen) when is_integer(index) and index >= 0 do
-    case Enum.at(errors, index) do
-      # A cycle cannot happen in a well-formed chain, but a malformed one must not loop here.
-      nil ->
-        Enum.reverse(seen)
+  defp chain(errors, index, visited, seen) when is_integer(index) and index >= 0 do
+    error = Enum.at(errors, index)
 
-      error ->
-        if index in Enum.map(seen, & &1.index) do
-          Enum.reverse(seen)
-        else
-          chain(errors, error.cause_idx, [%{index: index, error: error} | seen])
-        end
+    # A cycle cannot happen in a well-formed chain, but a malformed one must not loop here, so
+    # an index already walked ends the chain as a missing one does.
+    if is_nil(error) or MapSet.member?(visited, index) do
+      Enum.reverse(seen)
+    else
+      chain(errors, error.cause_idx, MapSet.put(visited, index), [error | seen])
     end
   end
 
-  defp chain(_errors, _index, seen), do: Enum.reverse(seen)
+  defp chain(_errors, _index, _visited, seen), do: Enum.reverse(seen)
 
-  defp cause(%{error: error}) do
+  defp cause(%Proto.FetchErrorDetailsResponse.Error{} = error) do
     %{
       message: error.message,
       classes: error.error_type_hierarchy,
@@ -1296,7 +1257,7 @@ defmodule Latu.Client do
     end
   end
 
-  defp open(target, opts) do
+  defp open_channel(target, opts) do
     case GRPC.Stub.connect(target, opts) do
       {:ok, channel} ->
         {:ok, channel}
