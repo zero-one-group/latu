@@ -102,6 +102,39 @@ defmodule Latu.Integration.CreateDataFrameTest do
       assert Explorer.DataFrame.n_rows(frame) == 0
       assert Explorer.DataFrame.names(frame) == ["id", "name"]
     end
+
+    test "a DateTime ships zoned and a NaiveDateTime does not", %{session: session} do
+      df =
+        Latu.create_dataframe!(session, [
+          %{utc: ~U[2026-01-02 03:04:05Z], naive: ~N[2026-01-02 03:04:05]}
+        ])
+
+      # Spark says `timestamp` only for a zoned Arrow field, so this pins Explorer's inference.
+      assert Latu.schema!(df) == [
+               %{name: "naive", type: "timestamp_ntz", nullable: true},
+               %{name: "utc", type: "timestamp", nullable: true}
+             ]
+    end
+
+    test "an instant survives a non-UTC session timezone", %{session: session} do
+      Latu.set_conf!(session, "spark.sql.session.timeZone", "Asia/Jakarta")
+
+      df =
+        Latu.create_dataframe!(session, [
+          %{utc: ~U[2026-01-02 03:04:05Z], naive: ~N[2026-01-02 03:04:05]}
+        ])
+
+      rendered =
+        df
+        |> Latu.select(
+          utc: Latu.Column.cast(Latu.col(df, :utc), "string"),
+          naive: Latu.Column.cast(Latu.col(df, :naive), "string")
+        )
+        |> Latu.collect!()
+
+      # +7 on the instant; the wall clock does not move.
+      assert rendered == [%{utc: "2026-01-02 10:04:05", naive: "2026-01-02 03:04:05"}]
+    end
   end
 
   describe "over the threshold: ChunkedCachedLocalRelation" do
