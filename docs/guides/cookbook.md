@@ -3,9 +3,8 @@
 Short recipes for things people actually do. The [quick start](quick-start.md) is the tour; this
 is the reference you come back to.
 
-Every `elixir` snippet here is executed by `mix check.all`
-(`test/integration/guides_test.exs`), in order, sharing one set of bindings — with two
-exceptions, each marked on the page and each saying why. The pattern matches are the assertions.
+Every `elixir` snippet here is executed by `mix check.all`, in order, sharing one set of
+bindings. Two are not, and each says so where it stands.
 
 Where a recipe departs from PySpark, [`docs/deviations.md`](../deviations.md) has the reason.
 
@@ -49,7 +48,7 @@ is null in the rows you happened to write has nothing to infer from.
 
 ## Grouping, and naming what comes out
 
-`Latu.agg/2` takes a keyword list, and the keys are the output column names — so there is no
+`Latu.agg/2` takes a keyword list, and the keys are the output column names. There is no
 `sum(units)` to quote back at you later.
 
 ```elixir
@@ -81,8 +80,8 @@ pivoted =
   pivoted |> Latu.sort(:region) |> Latu.collect()
 ```
 
-**Pass the values when you know them.** Without them Spark runs a separate query first to find
-the distinct ones, which is a second pass over the data to learn something you already knew.
+**Pass the values when you know them.** Without them Spark runs a separate query to find the
+distinct ones. That is a second pass over the data to learn something you already knew.
 
 ## Rolling and ranking windows
 
@@ -103,7 +102,7 @@ rolling = W.rows_between(window, -1, 1)
 [3, 9, 18, 15] = Enum.map(rows, & &1.s)
 ```
 
-The ids are `0, 3, 6, 9` — gapped on purpose, because that is what separates the two frame
+The ids are `0, 3, 6, 9`, gapped on purpose, because that is what separates the two frame
 kinds. **`rows_between` counts rows and `range_between` counts values**, and with consecutive
 ids the two agree and you would never find out:
 
@@ -155,7 +154,7 @@ Dropping reads four ways, and they are genuinely different:
 {:ok, 1} = readings |> Latu.drop_na(min_non_nulls: 3) |> Latu.count()
 ```
 
-`how: :all` keeps every row here because `id` is never null — a row has to be null *all the way
+`how: :all` keeps every row here because `id` is never null. A row has to be null *all the way
 across* to go. And `:min_non_nulls` overrides `:how` rather than combining with it.
 
 Filling has a rule worth knowing before it surprises you: **a fill value only reaches the columns
@@ -167,7 +166,7 @@ whose type it fits**, and Spark says nothing about the ones it skips.
 [%{id: 1, score: 10.0, team: "red"}, %{id: 2, score: -1.0, team: "red"} | _] = filled
 ```
 
-`team` is still null there — a number does not fit a string column, so Spark passes it over. A
+`team` is still null there. A number does not fit a string column, so Spark passes it over. A
 string fills that one and leaves `score` alone:
 
 ```elixir
@@ -190,9 +189,9 @@ checking a frame costs no second pass over it.
 %{quality: %{rows: 4, scored: 2}} = info.observed
 ```
 
-Every action has a `_with_metrics` twin — `count_with_metrics/2`, `write_with_metrics/2`,
-`merge_with_metrics/2` — which is how you find out how many rows a write touched without
-counting them again afterwards.
+Every action has a `_with_metrics` twin: `count_with_metrics/2`, `write_with_metrics/2`,
+`merge_with_metrics/2`. That is how you learn how many rows a write touched without counting
+them again.
 
 ## Checkpointing a long pipeline
 
@@ -209,9 +208,9 @@ its own**, and `with_checkpoint/3` is the bracket that frees it even when your f
 {4, 3} = counts
 ```
 
-Use `Latu.checkpoint/2` plus `Latu.release/1` when the frame has to outlive one function — in a
-REPL it usually does. Nothing frees a checkpoint for you: Latu holds no processes and has no
-finalizer, so the session ending is the only other thing that bounds it.
+Use `Latu.checkpoint/2` plus `Latu.release/1` when the frame has to outlive one function. In a
+REPL it usually does. Nothing frees a checkpoint for you. Latu holds no processes and no
+finaliser, so the session ending is the only other thing that bounds it.
 
 ## Results too large to hold
 
@@ -229,8 +228,8 @@ total =
 1_000 = total
 ```
 
-`Latu.to_explorer/2` is the eager form: it brings the whole result back, so bound the plan
-first when you want part of it — `Latu.limit/2` is Spark's own way to ask for that.
+`Latu.to_explorer/2` is the eager form. It brings the whole result back, so bound the plan when
+you want part of it. `Latu.limit/2` is Spark's own way to ask.
 
 ```elixir
 {:ok, frame} = session |> Latu.range(100) |> Latu.to_explorer()
@@ -250,14 +249,13 @@ Every action that reaches the server takes `progress:`, a 1-arity function calle
   |> Latu.count(progress: fn p -> IO.write("\r#{Latu.Progress.percent(p)}%") end)
 ```
 
-Two things the shape does not tell you. **A fast query may report nothing at all**, which is the
-server's timer and not an error — so a handler must not be where your result comes from. And the
-handler runs **in your own process**, because Latu holds no process to isolate it in: if it
-raises, the query fails.
+**A fast query may report nothing at all.** That is the server's timer, not an error, so a
+handler must not be where your result comes from. The handler runs **in your own process**,
+because Latu holds no process to isolate it in. If it raises, the query fails.
 
 ## Interrupting a query from another process
 
-The process running a query cannot cancel it — it is blocked in the query. That is what tags are
+The process running a query cannot cancel it. It is blocked in the query. That is what tags are
 for: tag a session, run the work from a `Task`, and interrupt by tag from anywhere.
 
 ```elixir
@@ -268,14 +266,12 @@ worker = Latu.connect!("sc://localhost:15002", tags: ["cookbook"])
 {:ok, _} = Latu.disconnect(worker)
 ```
 
-Nothing was running, so nothing matched, and an empty list is the honest answer rather than an
-error. With work in flight you get back the operation ids the server cancelled;
-`test/integration/control_test.exs` runs the full dance, and it is `async: false` because a
-query slow enough to interrupt occupies the server while it runs.
+Nothing was running, so nothing matched. An empty list is the honest answer rather than an
+error. With work in flight you get back the operation ids the server cancelled.
 
-**Interrupt rather than killing the process.** A Latu execution is reattachable — a client may
-vanish and come back — so a killed client leaves the query *running on the server*, holding
-cluster resources until the detached timeout expires.
+**Interrupt rather than killing the process.** A Latu execution is reattachable, so a killed
+client leaves the query *running on the server*. It holds cluster resources until the detached
+timeout expires.
 
 ## Subqueries
 
@@ -341,20 +337,16 @@ Latu.read(session,
 )
 ```
 
-`test/integration/jdbc_test.exs` does prove the option passing, against embedded Derby — but
-that works only because `--master local[1]` puts the executor in the driver's JVM, which is a
-property of the test rig and not advice.
-
-The driver jar has to be on the **cluster's** classpath — Latu ships nothing from your machine,
-and `docs/decisions.md` records why. `query:` is Spark's own option for pushing a query down,
-and it reaches the server because Latu passes through what it does not recognise rather than
+The driver jar has to be on the **cluster's** classpath. Latu ships nothing from your machine,
+and `docs/decisions.md` records why. `query:` is Spark's own option for pushing a query down. It
+reaches the server because Latu passes through what it does not recognise, rather than
 validating a list it would have to keep current.
 
 ## Upserting with `merge_into`
 
-A merge is built as inert data and sent by `Latu.merge/2`. The frame is the *source*, the table
-is the target, and both are in scope in the condition — so the names need qualifying, the source
-by `Latu.as/2`.
+A merge is built as inert data and sent by `Latu.merge/2`. The frame is the *source* and the
+table is the target. Both are in scope in the condition, so the names need qualifying, and
+`Latu.as/2` is what qualifies the source.
 
 > **Not executed.** A merge needs an Iceberg or Delta target, and the test server has neither.
 
@@ -368,9 +360,9 @@ sales
 ```
 
 **A stock Spark cannot run a merge at all.** `RewriteMergeIntoTable` only rewrites a target that
-supports row-level operations; Iceberg and Delta provide such tables and Spark's own built-in
-sources do not, so the plan is refused at analysis. The plan Latu builds is the same either way,
-which is why the verb ships.
+supports row-level operations. Iceberg and Delta provide them; Spark's built-in sources do not,
+so the plan is refused at analysis. Latu builds the same plan either way, which is why the verb
+ships.
 
 Clauses apply in the order you add them and **only the first matching clause runs**, so an
 unconditional one belongs last. `Latu.merge_with_metrics/2` is the form that tells you how many
@@ -378,11 +370,6 @@ rows it touched.
 
 ## Where to go next
 
-  * [Quick start](quick-start.md) — the tour, if you have not taken it
-  * [Coming from PySpark](from-pyspark.md) — five differences, and a translation table
-  * [Coming from Explorer](from-explorer.md) — the two together, and where they differ
-  * `Latu` — every verb, with its options
-  * [Cheatsheet](../cheatsheet.cheatmd) — the same verbs, one line each
-  * [`usage-rules.md`](../../usage-rules.md) — the rules that are not guessable from the names
-  * [`docs/deviations.md`](../deviations.md) — every place the API departs from PySpark, and
-    why
+  * [Quick start](quick-start.md). The tour, if you have not taken it.
+  * [Cheatsheet](../cheatsheet.cheatmd). Every verb, one line each.
+  * [`usage-rules.md`](../../usage-rules.md). The rules that are not guessable from the names.

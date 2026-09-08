@@ -119,8 +119,10 @@ defmodule Latu.Dev.Cheatsheet do
   @marker " **+ !**"
 
   # The marker is appended after clamping and its width reserved before, so a long summary
-  # loses words rather than the fact that the verb has a raising twin.
-  defp row(call, text, twin?) do
+  # loses words rather than the fact that the verb has a raising twin. Public, like
+  # `first_sentence/1`, only so `cheatsheet_test.exs` can call it: the module is `@moduledoc
+  # false`, `dev/` is not in `elixirc_paths`, and it ships in no package.
+  def row(call, text, twin?) do
     fixed = String.length("| `#{call}` |  |")
     budget = @width - fixed - if(twin?, do: String.length(@marker), else: 0)
     "| `#{call}` | #{clamp(text, budget)}#{if twin?, do: @marker, else: ""} |"
@@ -165,7 +167,7 @@ defmodule Latu.Dev.Cheatsheet do
   # cut is then the sentence's own end.
   @abbreviations ~w(e.g i.e cf vs etc resp)
 
-  defp first_sentence(text) do
+  def first_sentence(text) do
     parts = String.split(text, ". ")
     taken = take_sentence(parts)
     joined = Enum.join(taken, ". ")
