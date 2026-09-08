@@ -1438,15 +1438,21 @@ PySpark's cap, and it is measured after escaping because that is the form travel
 ## 2026-09-08 — Vendored protos are pinned to a Spark tag, and CI checks they have not drifted
 
 `priv/proto/spark/connect/*.proto` is copied from Apache Spark, and `mix proto.generate` turns it
-into `lib/latu/protocol/generated/`. Nothing checked the copy was still what that tag ships, and
-the failure that matters is silent: a field that *moves* into a `oneof` between releases still
-compiles, because a Protobuf struct accepts any key you fail to set — the assignment is dropped
-and the request goes out short a field. The Swift client shipped exactly that and defined
-pipeline flows with no query.
+into `lib/latu/protocol/generated/`. The tag it came from was recorded only in prose, so nothing
+could tell a clean copy from a hand-edited one, from a half-finished re-vendor that mixed two
+tags. `priv/proto/VERSION` names the tag; `dev/check_protos.sh` fetches each vendored file from
+it and refuses on any difference. Its own CI job, because a GitHub outage must not be able to
+fail `mix check.all`, and it needs no BEAM.
 
-`priv/proto/VERSION` names the tag; `dev/check_protos.sh` fetches each vendored file from it and
-refuses on any difference. Its own CI job, because a GitHub outage must not be able to fail
-`mix check.all`, and it needs no BEAM.
+**Scope, stated narrowly, because it is easy to over-read.** A git tag is immutable, so this can
+only ever fire at the moment someone re-vendors: it catches a hand-edit, a partial copy, and a
+`VERSION` naming a tag the files did not come from. It does **not** catch the failure that
+actually bites clients — protos that changed correctly while the code calling them did not keep
+up. The Swift client shipped that one (#443, a `relation` field moved into a `details` oneof and
+the assignment setting it was commented out during regeneration and never restored, so flows were
+defined with no query), and its vendored protos were byte-perfect throughout. What catches that
+class here is `test/wire`: a dropped assignment changes the emitted plan, and a golden fails.
+This guard protects the *input* to `mix proto.generate`; the goldens protect the output.
 
 It guards drift in what Latu vendors, not files it does not. A new proto upstream is an adoption
 question, not a correctness one.
@@ -1458,13 +1464,19 @@ would make a new one: `ChunkedCachedLocalRelation`, `zip_with_index`, the geomet
 `time` in the decodable set are 4.1+ or 4.2+ surface, so a backward matrix buys a support
 commitment and a layer of version gates for users nobody promised anything to.
 
-Forward is the opposite trade, because the three things that break a client on a newer server are
-all invisible to a golden that pins what Latu sends: a proto field that moved, server semantics
-changing under an unchanged wire shape (`isLocal` flipped in 4.1), and a new server-side
-*requirement* — 4.3 rejects an uploaded `TIME(p)` column without `SPARK::time::precision` Arrow
-metadata, which Polars does not write. `.github/workflows/spark-versions.yml` runs the
-integration suite against tags given as an input, weekly and on demand, never on a PR: red there
-is upstream news, not a broken change.
+Forward is the opposite trade, because what breaks a client on a newer server is invisible to a
+golden that pins what Latu sends — the bytes are unchanged and the *answer* moves. Two shapes,
+both only reachable by running against that server: semantics changing under an unchanged wire
+shape (`isLocal` flipped in 4.1, SPARK-51818), and a new server-side *requirement* — 4.3 rejects
+an uploaded `TIME(p)` column without `SPARK::time::precision` Arrow metadata, which Polars does
+not write. A field a newer server has started ignoring lands here too, but behaviourally, and
+only where a test covers that surface. `.github/workflows/spark-versions.yml` runs the
+integration suite against tags given as an input, on demand and never on a PR: red there is
+upstream news, not a broken change.
+
+No cron. A weekly run against the one version `mix check.all` already covers is a green job that
+teaches you to ignore it, which is the failure this whole entry is written against. The schedule
+goes in when there is a second tag to put in it.
 
 **Result goldens are what make such a run informative.** `test/wire` pins what Latu *sends*;
 `test/sql` pins what the server *answers* — schema and rendered table, for deterministic queries

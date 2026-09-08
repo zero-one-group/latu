@@ -1,6 +1,6 @@
 # The forward-compatibility run: the integration suite against a Spark newer than the one Latu
-# targets. Manual and weekly, never on a PR — red here is upstream news, not a broken change.
-# Why forward and not backward, and why the goldens only report: docs/decisions.md.
+# targets. On demand, never on a PR — red here is upstream news, not a broken change. Why there
+# is no cron, why forward and not backward, and why the goldens only report: docs/decisions.md.
 name: Spark versions
 
 on:
@@ -9,8 +9,6 @@ on:
       versions:
         description: JSON array of apache/spark image tags
         default: '["4.2.0"]'
-  schedule:
-    - cron: "0 3 * * 1"
 
 permissions:
   contents: read
@@ -23,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: ${{ fromJSON(github.event.inputs.versions || '["4.2.0"]') }}
+        spark: ${{ fromJSON(inputs.versions) }}
     env:
       SPARK_VERSION: ${{ matrix.spark }}
     steps:

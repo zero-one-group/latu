@@ -149,8 +149,9 @@ docker compose down
 ```
 
 `docker compose down` on both ends: the containers keep whichever image they were created with.
-`.github/workflows/spark-versions.yml` does the same weekly, and on demand with the tags passed
-as its `versions` input.
+`.github/workflows/spark-versions.yml` does the same on demand, with the tags passed as its
+`versions` input. No cron: a scheduled run against the version `mix check.all` already covers is
+a green job nobody reads.
 
 ## The function library
 
