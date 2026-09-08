@@ -1954,6 +1954,10 @@ defmodule Latu.Plan do
     bound({:value, literal({:long, offset})})
   end
 
+  defp boundary(offset, :range) when is_integer(offset) do
+    raise ArgumentError, "a range_between/3 offset is 64-bit; #{offset} is not"
+  end
+
   defp bound(boundary) do
     %Proto.Expression.Window.WindowFrame.FrameBoundary{boundary: boundary}
   end
