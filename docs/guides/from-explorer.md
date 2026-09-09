@@ -256,13 +256,13 @@ that seam is the Arrow boundary, in both directions, with no conversion layer be
 
 Explorer reaches databases through [ADBC](https://github.com/elixir-explorer/adbc). Latu reaches
 them through Spark's own JDBC sources, so the cluster connects rather than your VM. MLlib is
-[`latu_ml`](https://hexdocs.pm/latu_ml), a companion package on Hex. Structured streaming is
-nobody's yet. [`usage-rules.md`](../../usage-rules.md) has the rest.
+[`latu_ml`](https://hexdocs.pm/latu_ml), a companion package on Hex.
+[`usage-rules.md`](../../usage-rules.md) has the rest.
 
 ## Where to go next
 
   * [Quick start](quick-start.md). The tour, in ten minutes.
-  * [Cookbook](cookbook.md). Recipes, including the streaming and JDBC ones.
+  * [Cookbook](cookbook.md). Recipes, including the `stream/2` and JDBC ones.
   * [Cheatsheet](../cheatsheet.cheatmd). The whole surface, one line each.
 
 ```elixir

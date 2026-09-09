@@ -16,10 +16,10 @@ defmodule Latu do
   `with_checkpoint/3`, because there is no finalizer to free it for you. Latu hands out
   resources and never keeps them; nothing is tracked between calls.
 
-  That is the line structured streaming falls the wrong side of, and why it is a separate
-  package: a checkpoint is data at rest and can be bracketed, a streaming query is a running
-  computation that outlives any bracket — a lifecycle, which wants an owner.
-  `docs/decisions.md` has the argument, and why MLlib is separate on different grounds.
+  A streaming query is the third: `write_stream/2` hands back a `%Latu.StreamingQuery{}`, a
+  server-side object addressed by id, stopped by `Latu.StreamingQuery.stop/1` or scoped by
+  `with_stream/3`. Nothing here owns one; a supervised query is a recipe, not a module. MLlib is
+  separate on different grounds, as `docs/decisions.md` has it.
 
   This module is the verbs — plus the few expression builders that take a DataFrame rather than
   a column: `col/2` for a tagged reference, and `scalar/1` and `exists/1` for a subquery over
@@ -733,8 +733,11 @@ defmodule Latu do
     * `:path` — one path to read, as a string.
     * `:paths` — several, as a list of strings. Defaults to `[]`. Passing both `:path` and
       `:paths` raises; they are two spellings of one thing.
+    * `:is_streaming` — read as a stream, PySpark's `readStream`. Defaults to `false`. A file
+      source then wants a `:schema` and, to bound each batch, `max_files_per_trigger:`; the
+      frame is a plan like any other until `write_stream/2` starts it.
 
-  A reader option whose own name is one of those four has to be written as a **string key**,
+  A reader option whose own name is one of those five has to be written as a **string key**,
   which passes verbatim: `Latu.read(session, [{"path", "s3://bucket/key"}, format: "custom"])`.
 
   ## Examples
@@ -753,15 +756,22 @@ defmodule Latu do
   Read a catalog table by name.
 
       Latu.table(session, "people")
+      Latu.table(session, "events", is_streaming: true)
 
-  Options (`table/3`) follow `read/2`'s key and value rules.
+  ## Options
+
+  One key is Latu's. **Every other key is a reader option**, with `read/2`'s key and value
+  rules; a map of options passes verbatim and carries no flag.
+
+    * `:is_streaming` — read the table as a stream, PySpark's `readStream.table`. Defaults to
+      `false`.
   """
   @spec table(Session.t(), String.t() | atom()) :: DataFrame.t()
   def table(session, name), do: DataFrame.table(session, name, [])
 
   @doc "See `table/2`."
   @spec table(Session.t(), String.t() | atom(), keyword() | map()) :: DataFrame.t()
-  defdelegate table(session, name, options), to: DataFrame
+  defdelegate table(session, name, opts), to: DataFrame
 
   @doc """
   Run SQL. An action: the query executes when called — so DDL works — and the DataFrame that
@@ -953,11 +963,33 @@ defmodule Latu do
 
       Latu.distinct(df)
       Latu.distinct(df, [:suburb])
+      Latu.distinct(events, [:id], within_watermark: true)
 
-  See `Latu.DataFrame.distinct/2`.
+  ## Options
+
+    * `:within_watermark` — on a streaming frame with a watermark, PySpark's
+      `dropDuplicatesWithinWatermark`: a duplicate is one that arrives within the watermark
+      delay, so the state Spark keeps is bounded instead of growing forever. Defaults to
+      `false`. Write the columns first, `[]` for all of them.
   """
-  @spec distinct(DataFrame.t(), term()) :: DataFrame.t()
-  defdelegate distinct(df, columns \\ []), to: DataFrame
+  @spec distinct(DataFrame.t(), term(), keyword()) :: DataFrame.t()
+  defdelegate distinct(df, columns \\ [], opts \\ []), to: DataFrame
+
+  @doc """
+  Mark a streaming frame's event-time column, and how late a row may arrive.
+
+      events
+      |> Latu.with_watermark(:ts, "10 seconds")
+      |> Latu.group_by([F.window(:ts, "1 minute"), :sku])
+      |> Latu.agg(qty: F.sum(:qty))
+
+  PySpark's `withWatermark(eventTime, delayThreshold)`, the delay a Spark interval string. What
+  it buys is bounded state: a windowed aggregate, a stream-stream `join/3` or a
+  `distinct/3` with `within_watermark: true` can drop what the watermark says is finished.
+  Nothing on a batch frame; Spark ignores it there.
+  """
+  @spec with_watermark(DataFrame.t(), String.t() | atom(), String.t()) :: DataFrame.t()
+  defdelegate with_watermark(df, event_time, delay_threshold), to: DataFrame
 
   @doc """
   Sort rows.
@@ -2113,7 +2145,10 @@ defmodule Latu do
   @spec is_local!(DataFrame.t()) :: boolean()
   defdelegate is_local!(df), to: DataFrame
 
-  @doc "Whether the frame is a streaming source. Today only `table_changes/3` builds one."
+  @doc """
+  Whether the frame is a streaming source. `read/2` and `table/3` build one with
+  `is_streaming: true`, `table_changes/3` with its own flag.
+  """
   @spec is_streaming(DataFrame.t()) :: {:ok, boolean()} | {:error, Error.t()}
   defdelegate is_streaming(df), to: DataFrame
 
@@ -2694,6 +2729,99 @@ defmodule Latu do
   @doc "Like `write_v2/3`, raising on failure."
   @spec write_v2!(DataFrame.t(), String.t() | atom(), keyword()) :: :ok
   defdelegate write_v2!(df, table, opts), to: DataFrame
+
+  @doc """
+  Start a streaming write. An action: the query starts when called, and what comes back is a
+  `%Latu.StreamingQuery{}` for the query now running on the server.
+
+      {:ok, query} =
+        Latu.write_stream(rollups,
+          format: "parquet", path: "/data/rollups", output_mode: :append,
+          trigger: :available_now, checkpoint_location: "/data/ckpt", query_name: "rollups")
+
+      {:ok, true} = Latu.StreamingQuery.await_termination(query)
+
+  PySpark's `df.writeStream...start()` and `.toTable()`, one call. The frame is a streaming
+  one from `read/2` or `table/3` with `is_streaming: true`. **The query outlives this process**:
+  stop it with `Latu.StreamingQuery.stop/1`, scope it with `with_stream/3`, or find it again
+  with `Latu.StreamingQuery.active/1`. Its failure raises nothing here; see
+  `Latu.StreamingQuery`.
+
+  ## Options
+
+  Nine keys are Latu's. **Every other key is a writer option**, with `read/2`'s key and value
+  rules.
+
+    * `:format` — the sink's short name or class: `"parquet"`, `"kafka"`, `"console"`.
+      Defaults to `nil`, leaving the server on its default.
+    * `:output_mode` — what each trigger writes. Defaults to `nil`, which leaves Spark on its
+      own default of `:append`.
+      * `:append` — new rows only; the only mode without aggregation.
+      * `:complete` — the whole result every trigger; aggregations only.
+      * `:update` — the rows that changed.
+    * `:trigger` — when a batch runs. Defaults to `nil`, Spark's default of a processing-time
+      trigger with no interval, one batch straight after another.
+      * `:available_now` — process everything the source has now, in batches, then stop.
+        Incremental ETL, and the shape a test wants: it terminates by itself.
+      * `{:processing_time, interval}` — a batch every `interval`, a Spark duration string
+        like `"10 seconds"`.
+      * `{:continuous, interval}` — continuous processing, checkpointing every `interval`.
+      * `:once` — one batch, then stop. Deprecated by Spark in favour of `:available_now`,
+        and offered because the wire still carries it.
+    * `:query_name` — a name for the query, shown by `Latu.StreamingQuery.active/1` and the
+      Spark UI. Defaults to `nil`.
+    * `:path` — the sink's directory, for a file sink. Defaults to `nil`.
+    * `:table` — a catalog table to write to, PySpark's `toTable`. Defaults to `nil`. Never
+      with `:path`; neither is fine for a sink that names its destination in options
+      (`console`, `memory`, `kafka`).
+    * `:partition_by` — column names to partition the sink by, as a list. Defaults to `[]`.
+    * `:cluster_by` — column names to cluster by, as a list. Defaults to `[]`.
+    * `:checkpoint_location` — where Spark keeps the query's offsets and state, so a restart
+      resumes. Defaults to `nil`; every query that is not a throwaway sets it. The
+      `checkpointLocation` writer option, reserved because of that, and nothing to do with
+      `checkpoint/2`.
+
+  `foreach` and `foreachBatch` are not offered: both carry a serialised closure, which no
+  Elixir client can build. `docs/deviations.md` has the alternatives.
+  """
+  @spec write_stream(DataFrame.t(), keyword()) ::
+          {:ok, Latu.StreamingQuery.t()} | {:error, Error.t()}
+  defdelegate write_stream(df, opts), to: DataFrame
+
+  @doc "Like `write_stream/2`, raising on failure."
+  @spec write_stream!(DataFrame.t(), keyword()) :: Latu.StreamingQuery.t()
+  defdelegate write_stream!(df, opts), to: DataFrame
+
+  @doc """
+  Start a streaming write, run your function over the query, and stop it on the way out.
+
+      {:ok, progress} =
+        Latu.with_stream(rollups, [format: "parquet", path: out, trigger: :available_now,
+                                   checkpoint_location: ckpt], fn query ->
+          {:ok, true} = Latu.StreamingQuery.await_termination(query)
+          Latu.StreamingQuery.last_progress!(query)
+        end)
+
+  The bracket form, as `with_checkpoint/3` is to `checkpoint/2`. The stop happens in an `after`,
+  so a query cannot be left running by a function that raised; a stop that itself fails is
+  logged rather than raised. What the function does with its time is its own business: wait
+  for an `:available_now` query to finish, or watch a processing-time one until it has seen
+  enough.
+
+  ## Options
+
+  `write_stream/2`'s: `:format`, `:output_mode`, `:trigger`, `:query_name`, `:path`, `:table`,
+  `:partition_by`, `:cluster_by`, `:checkpoint_location`, and writer options.
+  """
+  @spec with_stream(DataFrame.t(), keyword(), (Latu.StreamingQuery.t() -> result)) ::
+          {:ok, result} | {:error, Error.t()}
+        when result: term()
+  defdelegate with_stream(df, opts, fun), to: DataFrame
+
+  @doc "Like `with_stream/3`, raising on failure."
+  @spec with_stream!(DataFrame.t(), keyword(), (Latu.StreamingQuery.t() -> result)) :: result
+        when result: term()
+  defdelegate with_stream!(df, opts, fun), to: DataFrame
 
   @doc """
   Register the DataFrame as a temporary view, visible to `sql/3`. An action.

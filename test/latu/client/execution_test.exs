@@ -5,6 +5,9 @@ defmodule Latu.Client.ExecutionTest do
   alias Latu.Error
   alias Latu.Protocol.Spark.Connect.ExecutePlanResponse, as: Response
   alias Latu.Protocol.Spark.Connect.MlCommandResult
+  alias Latu.Protocol.Spark.Connect.StreamingQueryCommandResult
+  alias Latu.Protocol.Spark.Connect.StreamingQueryManagerCommandResult
+  alias Latu.Protocol.Spark.Connect.WriteStreamOperationStartResult
   alias Latu.Session
 
   @operation "op-1"
@@ -165,6 +168,60 @@ defmodule Latu.Client.ExecutionTest do
 
     test "a result with no arm set latches nothing", %{session: session, execution: ex} do
       assert {:pull, ex} = Execution.step(ex, {:response, ml_result(session, nil)})
+      assert ex.ml_command_result == nil
+    end
+  end
+
+  # Opaque cargo again: atoms stand in for the payloads, and the three arms differ from the ML
+  # one in latching a result with *no* arm set, because for these that is an answer.
+  describe "the streaming results" do
+    test "a started query is latched, first one wins", %{session: session, execution: ex} do
+      assert ex.write_stream_operation_start_result == nil
+
+      {:pull, ex} = Execution.step(ex, {:response, stream_started(session, :first)})
+      assert ex.write_stream_operation_start_result.query_id == :first
+
+      {:pull, ex} = Execution.step(ex, {:response, stream_started(session, :replayed)})
+      assert ex.write_stream_operation_start_result.query_id == :first
+    end
+
+    test "a query command's result is latched, first one wins", %{session: s, execution: ex} do
+      assert ex.streaming_query_command_result == nil
+
+      {:pull, ex} = Execution.step(ex, {:response, query_result(s, {:status, :a_status})})
+      assert ex.streaming_query_command_result.result_type == {:status, :a_status}
+
+      {:pull, ex} = Execution.step(ex, {:response, query_result(s, {:status, :another})})
+      assert ex.streaming_query_command_result.result_type == {:status, :a_status}
+    end
+
+    test "a query command answered with no arm is an answer too", %{session: s, execution: ex} do
+      {:pull, ex} = Execution.step(ex, {:response, query_result(s, nil)})
+
+      assert %StreamingQueryCommandResult{result_type: nil} = ex.streaming_query_command_result
+    end
+
+    test "a manager command's result is latched, first one wins", %{session: s, execution: ex} do
+      assert ex.streaming_query_manager_command_result == nil
+
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(s, {:active, :these})})
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :these}
+
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(s, {:active, :those})})
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :these}
+
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(s, nil)})
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :these}
+    end
+
+    test "the three do not clobber one another", %{session: session, execution: ex} do
+      {:pull, ex} = Execution.step(ex, {:response, stream_started(session, :q)})
+      {:pull, ex} = Execution.step(ex, {:response, query_result(session, {:status, :s})})
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(session, {:active, :a})})
+
+      assert ex.write_stream_operation_start_result.query_id == :q
+      assert ex.streaming_query_command_result.result_type == {:status, :s}
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :a}
       assert ex.ml_command_result == nil
     end
   end
@@ -360,6 +417,32 @@ defmodule Latu.Client.ExecutionTest do
     %Response{
       session_id: session.session_id,
       response_type: {:ml_command_result, %MlCommandResult{result_type: result_type}}
+    }
+  end
+
+  defp stream_started(session, query_id) do
+    %Response{
+      session_id: session.session_id,
+      response_type:
+        {:write_stream_operation_start_result,
+         %WriteStreamOperationStartResult{query_id: query_id}}
+    }
+  end
+
+  defp query_result(session, result_type) do
+    %Response{
+      session_id: session.session_id,
+      response_type:
+        {:streaming_query_command_result, %StreamingQueryCommandResult{result_type: result_type}}
+    }
+  end
+
+  defp manager_result(session, result_type) do
+    %Response{
+      session_id: session.session_id,
+      response_type:
+        {:streaming_query_manager_command_result,
+         %StreamingQueryManagerCommandResult{result_type: result_type}}
     }
   end
 

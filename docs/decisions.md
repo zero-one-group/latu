@@ -1543,8 +1543,66 @@ invented.
 
 Two things the probes measured that the docs owe users. A streaming query outlives the client
 that started it, so `stop/1` is load-bearing and a forgotten query has no bound, where the ML
-cache refuses a fit rather than dropping a model. And `interrupt_all` does stop streaming
+cache refuses a fit rather than dropping a model. *(The bound is the session; see 2026-09-09.)* And `interrupt_all` does stop streaming
 queries, which makes it the session-wide kill and a hazard for anyone interrupting a batch query
 in a session that also streams.
 
 Scope, milestones and the open questions are in the project's `latu-streaming-roadmap.md`.
+
+## 2026-09-09 — Streaming S1: what the code settled
+
+The roadmap's recommendations, confirmed or corrected by the code and by reading the 4.2.0
+server (`SparkConnectPlanner`, `SparkConnectStreamingQueryCache`, `SessionHolder`).
+
+**The manager verbs live on `Latu.StreamingQuery`, session-first**: `active/1`, `get/2`,
+`await_any_termination/2`, `reset_terminated/1`, under Spark's own names, as `spark.catalog` is
+`Latu.Catalog`. Not `Latu.active_streams/1`: the facade's verbs take a frame, and a module that
+holds the handle's verbs is where someone looks for the ones that find a handle.
+
+**`is_streaming:` is a reserved key on both `read/2` and `table/3`.** It is `Read`'s field, not
+the data source's, so `readStream.table` needs it as much as `readStream.load` does. `table/3`
+gained a validated option list to carry it; a map of options still passes verbatim.
+
+**`within_watermark:` is an option on `distinct/3`**, not a second verb. `Deduplicate` is one
+message with one flag, and `checkpoint/2`'s `local:` is the precedent. Options in the columns'
+place are refused by name.
+
+**A failed query reaches the caller two ways, and the docs say which.** The server's
+`awaitTermination` rethrows the query's `StreamingQueryException`, so `await_termination/2`
+returns it as `{:error, %Latu.Error{}}` from the RPC. `exception/1` is the poll for a query
+nobody waits on, and answers with a new kind, `:query`, carrying the class and stack trace from
+the `ExceptionResult`. Same failure, two arrivals; the kind says which route it took.
+
+**A forgotten query is bounded by its session, not by nothing.** The roadmap read the probe as
+"no bound": a query outlived two dead clients for 958 batches. It outlived them because the
+rejoin probe reused the session id. `SessionHolder.close` stops every query the session
+started, so `Latu.disconnect(session, release: true)` and the server's idle session timeout are
+the bounds; `interrupt_all` is the same call with `blocking = false`. A *stopped* query stays
+addressable for one hour of inactivity (`stoppedQueryInactivityTimeout`, not a conf), each
+command renewing it, then answers `CONNECT_INVALID_PLAN.STREAMING_QUERY_NOT_FOUND`. The cache
+is keyed by id and run id, so a stale run id on a running query is
+`STREAMING_QUERY_RUN_ID_MISMATCH` and on a stopped one is `NOT_FOUND`.
+
+**`explain/2` takes `mode: :simple | :extended`**, the frame verb's spelling over PySpark's
+`extended=True`, so the two read alike; a refusal names the two.
+
+**`:once` is offered, `:real_time` is not.** `Trigger.Once` is deprecated upstream but the wire
+carries it and PySpark sends it. `realTime` is 4.2-only and an older server drops the field in
+silence; it waits on `docs/spark-versions.md`, which is where that risk gets a name.
+
+**`write_stream/2` does not refuse an observed plan** the way `write/2` does: a streaming
+query's observed metrics ride in every progress report under `:observed_metrics`, so nothing is
+discarded.
+
+**Progress keys under `startOffset`, `endOffset`, `latestOffset` and `observedMetrics` stay as
+Spark wrote them.** The first three are polymorphic across sources; the last is keyed by the
+caller's own names, which snake-casing would mangle. Everything else snake-cases into atoms,
+and Spark's key set is small enough that the atoms are bounded.
+
+**The oracle grew `capture`**, `latu_ml`'s interception, because `DataStreamWriter.start` and
+every `StreamingQuery` verb build and send in one method with no `_write` to finish by hand.
+`StreamingQuery(spark, "q-1", "r-1")` is a client object over ids the server has never seen,
+and `capture` stops each command before it is sent.
+
+The `:streaming` ExUnit tag holds the processing-time integration tests, excluded by default
+(S-D7); `:available_now` over a bounded file source is the one streaming test in `check.all`.

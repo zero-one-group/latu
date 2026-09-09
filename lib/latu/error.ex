@@ -12,6 +12,9 @@ defmodule Latu.Error do
       the session id.
     * `:decode` — the result arrived and Latu could not turn it into what you asked for; the
       message names the column or the bound.
+    * `:query` — a streaming query failed on the server, some time after it was started.
+      `Latu.StreamingQuery.exception/1` hands it back, with `error_class` and `stacktrace`
+      filled from the server's report.
 
   ## What a Spark error carries
 

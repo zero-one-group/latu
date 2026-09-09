@@ -106,6 +106,10 @@ defmodule Latu.Plan do
   def cached_relation_id(%Relation{}), do: :error
   def checkpoint(input, opts \\ []), do: relation({:checkpoint, input, opts})
   def remove_cached_relation(id), do: relation({:remove_cached_relation, id})
+  def with_watermark(input, time, delay), do: relation({:with_watermark, input, time, delay})
+  def write_stream(input, opts \\ []), do: {:command, {:write_stream, input, opts}}
+  def streaming_query_command(id, run_id, arm), do: {:command, {:query, id, run_id, arm}}
+  def streaming_query_manager_command(arm), do: {:command, {:query_manager, arm}}
   def merge_action(clause, action, opts \\ []), do: {:merge_action, clause, action, opts}
   def merge_condition(condition), do: {:merge_condition, condition}
 
@@ -124,7 +128,7 @@ defmodule Latu.Plan do
   def filter(input, condition), do: relation({:filter, input, condition})
   def limit(input, count), do: relation({:limit, input, count})
   def offset(input, count), do: relation({:offset, input, count})
-  def deduplicate(input, columns), do: relation({:deduplicate, input, columns})
+  def deduplicate(input, columns, opts \\ []), do: relation({:deduplicate, input, columns, opts})
   def sort(input, orders, opts \\ []), do: relation({:sort, input, orders, opts})
   def sample(input, fraction, opts \\ []), do: relation({:sample, input, fraction, opts})
   def repartition(input, count, opts \\ []), do: relation({:repartition, input, count, opts})

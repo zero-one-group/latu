@@ -30,6 +30,9 @@ defmodule Latu.Client.Execution do
     :schema,
     :command_result,
     :ml_command_result,
+    :write_stream_operation_start_result,
+    :streaming_query_command_result,
+    :streaming_query_manager_command_result,
     :checkpointed,
     :metrics,
     :progress,
@@ -62,6 +65,10 @@ defmodule Latu.Client.Execution do
           schema: Proto.DataType.t() | nil,
           command_result: Proto.Relation.t() | nil,
           ml_command_result: Proto.MlCommandResult.t() | nil,
+          write_stream_operation_start_result: Proto.WriteStreamOperationStartResult.t() | nil,
+          streaming_query_command_result: Proto.StreamingQueryCommandResult.t() | nil,
+          streaming_query_manager_command_result:
+            Proto.StreamingQueryManagerCommandResult.t() | nil,
           checkpointed: String.t() | nil,
           metrics: Proto.ExecutePlanResponse.Metrics.t() | nil,
           progress: Proto.ExecutePlanResponse.ExecutionProgress.t() | nil,
@@ -296,6 +303,32 @@ defmodule Latu.Client.Execution do
   defp take(%__MODULE__{ml_command_result: nil} = execution, {:ml_command_result, result})
        when not is_nil(result.result_type) do
     {:pull, %{execution | ml_command_result: result}}
+  end
+
+  # The three streaming commands each answer once, and are latched as the ML result is: first
+  # one wins, the whole message, opaque. Unlike the ML arm none is guarded on a set `result_type`,
+  # because for these an empty message *is* an answer — `stop` and `reset_terminated` carry no
+  # payload, `exception` with nothing to report sets no arm, and `get_query` on an unknown id
+  # sets none either. `Latu.StreamingQuery` is what interprets them.
+  defp take(
+         %__MODULE__{write_stream_operation_start_result: nil} = execution,
+         {:write_stream_operation_start_result, result}
+       ) do
+    {:pull, %{execution | write_stream_operation_start_result: result}}
+  end
+
+  defp take(
+         %__MODULE__{streaming_query_command_result: nil} = execution,
+         {:streaming_query_command_result, result}
+       ) do
+    {:pull, %{execution | streaming_query_command_result: result}}
+  end
+
+  defp take(
+         %__MODULE__{streaming_query_manager_command_result: nil} = execution,
+         {:streaming_query_manager_command_result, result}
+       ) do
+    {:pull, %{execution | streaming_query_manager_command_result: result}}
   end
 
   # `schema`, `metrics` and `observed_metrics` sit outside the `response_type` oneof and are

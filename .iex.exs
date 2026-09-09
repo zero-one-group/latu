@@ -11,4 +11,4 @@ import Latu.Column
 alias Latu.Functions, as: F
 alias Latu.Window, as: W
 
-alias Latu.{Catalog, DataFrame, Error, Plan, Progress, Session}
+alias Latu.{Catalog, DataFrame, Error, Plan, Progress, Session, StreamingQuery}

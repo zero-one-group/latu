@@ -16,6 +16,7 @@ defmodule Latu.DataFrame do
   alias Latu.Plan
   alias Latu.Result
   alias Latu.Session
+  alias Latu.StreamingQuery
 
   @enforce_keys [:session, :plan]
   defstruct [:session, :plan]
@@ -51,7 +52,7 @@ defmodule Latu.DataFrame do
   @doc "See `Latu.read/2`."
   @spec read(Session.t(), keyword()) :: t()
   def read(%Session{} = session, opts) when is_list(opts) do
-    {reserved, options} = Keyword.split(opts, [:format, :schema, :path, :paths])
+    {reserved, options} = Keyword.split(opts, [:format, :schema, :path, :paths, :is_streaming])
 
     if reserved[:path] && reserved[:paths] do
       raise ArgumentError, "read takes :path or :paths, not both"
@@ -62,7 +63,8 @@ defmodule Latu.DataFrame do
         format: reserved[:format],
         schema: reserved[:schema] || "",
         paths: List.wrap(reserved[:paths] || reserved[:path]),
-        options: options
+        options: options,
+        is_streaming: Keyword.get(reserved, :is_streaming, false)
       )
 
     new(session, plan)
@@ -70,8 +72,14 @@ defmodule Latu.DataFrame do
 
   @doc "See `Latu.table/2`."
   @spec table(Session.t(), String.t() | atom(), keyword() | map()) :: t()
-  def table(%Session{} = session, name, options \\ []) do
-    new(session, Plan.table(name, options))
+  def table(%Session{} = session, name, opts \\ []) do
+    # A map of options is the escape hatch for keys no atom spells, and carries no flag.
+    {reserved, options} =
+      if is_list(opts), do: Keyword.split(opts, [:is_streaming]), else: {[], opts}
+
+    streaming? = Keyword.get(reserved, :is_streaming, false)
+
+    new(session, Plan.table(name, options: options, is_streaming: streaming?))
   end
 
   @doc "See `Latu.sql/3`."
@@ -509,10 +517,27 @@ defmodule Latu.DataFrame do
 
       Latu.distinct(df)              # every column is a key
       Latu.distinct(df, [:suburb])   # these columns are
+      Latu.distinct(df, [:id], within_watermark: true)
   """
-  @spec distinct(t(), term()) :: t()
-  def distinct(%__MODULE__{} = df, columns \\ []) do
-    %{df | plan: Plan.deduplicate(df.plan, List.wrap(columns))}
+  @spec distinct(t(), term(), keyword()) :: t()
+  def distinct(df, columns \\ [], opts \\ [])
+
+  # `distinct(df, within_watermark: true)` reads naturally and lands the options where the
+  # columns go, so it is refused by name rather than as "a column name is not {:within_...}".
+  def distinct(%__MODULE__{}, [{key, _value} | _rest], []) when is_atom(key) do
+    raise ArgumentError,
+          "distinct takes the columns before the options: " <>
+            "distinct(df, [], within_watermark: true) dedupes on every column"
+  end
+
+  def distinct(%__MODULE__{} = df, columns, opts) do
+    %{df | plan: Plan.deduplicate(df.plan, List.wrap(columns), opts)}
+  end
+
+  @doc "See `Latu.with_watermark/3`."
+  @spec with_watermark(t(), String.t() | atom(), String.t()) :: t()
+  def with_watermark(%__MODULE__{} = df, event_time, delay_threshold) do
+    %{df | plan: Plan.with_watermark(df.plan, event_time, delay_threshold)}
   end
 
   @doc """
@@ -1646,6 +1671,81 @@ defmodule Latu.DataFrame do
   @doc "Like `write_v2/3`, raising on failure."
   @spec write_v2!(t(), String.t() | atom(), keyword()) :: :ok
   def write_v2!(%__MODULE__{} = df, table, opts), do: run!(write_v2(df, table, opts))
+
+  @doc "See `Latu.write_stream/2`."
+  @spec write_stream(t(), keyword()) :: {:ok, StreamingQuery.t()} | {:error, Error.t()}
+  def write_stream(%__MODULE__{} = df, opts) when is_list(opts) do
+    # No `refuse_observed!/1`: a streaming query's observed metrics ride in its progress
+    # reports, under `:observed_metrics`, so nothing is discarded.
+    case run_command(df, write_stream_command(df, opts), opts) do
+      {:ok, %{write_stream_operation_start_result: nil}} ->
+        {:error, Error.new(:protocol, "the server started the query but sent back no id")}
+
+      {:ok, %{write_stream_operation_start_result: started, session: session}} ->
+        {:ok, StreamingQuery.started(session, started)}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc false
+  def write_stream_command(%__MODULE__{} = df, opts) do
+    {reserved, options} =
+      opts
+      |> without_progress()
+      |> Keyword.split([
+        :format,
+        :output_mode,
+        :trigger,
+        :query_name,
+        :path,
+        :table,
+        :partition_by,
+        :cluster_by,
+        :checkpoint_location
+      ])
+
+    Plan.write_stream(df.plan, Keyword.put(reserved, :options, options))
+  end
+
+  @doc "Like `write_stream/2`, raising on failure."
+  @spec write_stream!(t(), keyword()) :: StreamingQuery.t()
+  def write_stream!(%__MODULE__{} = df, opts), do: unwrap!(write_stream(df, opts))
+
+  @doc "See `Latu.with_stream/3`."
+  @spec with_stream(t(), keyword(), (StreamingQuery.t() -> result)) ::
+          {:ok, result} | {:error, Error.t()}
+        when result: term()
+  def with_stream(%__MODULE__{} = df, opts, fun) when is_list(opts) and is_function(fun, 1) do
+    with {:ok, query} <- write_stream(df, opts) do
+      try do
+        {:ok, fun.(query)}
+      after
+        # `after`, as `with_checkpoint/3`: the query stops whatever the function did, and a
+        # failed stop is logged rather than allowed to replace the caller's own exception.
+        stop_quietly(query)
+      end
+    end
+  end
+
+  @doc "Like `with_stream/3`, raising on failure."
+  @spec with_stream!(t(), keyword(), (StreamingQuery.t() -> result)) :: result
+        when result: term()
+  def with_stream!(%__MODULE__{} = df, opts, fun), do: unwrap!(with_stream(df, opts, fun))
+
+  defp stop_quietly(%StreamingQuery{} = query) do
+    case StreamingQuery.stop(query) do
+      :ok ->
+        :ok
+
+      {:error, error} ->
+        Logger.warning(
+          "could not stop streaming query #{query.id}: #{Exception.message(error)}. " <>
+            "It runs until it is stopped or the session ends."
+        )
+    end
+  end
 
   @doc "See `Latu.create_temp_view/3`."
   @spec create_temp_view(t(), String.t() | atom(), keyword()) :: :ok | {:error, Error.t()}

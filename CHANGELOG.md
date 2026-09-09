@@ -3,6 +3,22 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## Unreleased
+
+**Structured streaming.** `read/2` and `table/3` take `is_streaming: true`; `with_watermark/3`
+and `distinct/3`'s `within_watermark:` cover the stateful side; `write_stream/2` starts a query
+with the `:available_now`, `:once`, processing-time and continuous triggers and hands back a
+`%Latu.StreamingQuery{}`, whose module carries every `StreamingQueryCommand` and the four
+`spark.streams` verbs PySpark uses. `with_stream/3` is the bracket. `await_termination/2` is a
+loop of bounded server waits rather than one call, because a Connect server cuts a silent
+response stream every `senderMaxStreamDuration`; the semantics are Spark's. Progress and status
+decode into snake-cased maps of Spark's own JSON. `Latu.Error` gains the kind `:query`, for a
+streaming query's own failure as `exception/1` reports it. `foreach`, `foreachBatch` and the
+listener bus are not in this release; `docs/deviations.md` says why, and the bus is next.
+
+Additive; no migration. The 2026-09-02 decision that streaming was a separate package is
+reversed in `docs/decisions.md`.
+
 ## 0.5.0 — 2026-09-08
 
 One behavioural change, and it is the reason this is a minor rather than a patch.

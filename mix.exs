@@ -108,6 +108,7 @@ defmodule Latu.MixProject do
         Verbs: [Latu],
         Expressions: [Latu.Column, Latu.Functions, Latu.Window],
         Session: [Latu.Session, Latu.Retry, Latu.Catalog],
+        Streaming: [Latu.StreamingQuery],
         # Livebook rendering has no module of its own: `lib/latu/kino.ex` is a `Kino.Render`
         # impl for `Latu.DataFrame` behind an optional dep, and nothing else.
         "Results and observability": [

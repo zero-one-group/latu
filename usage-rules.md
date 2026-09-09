@@ -150,11 +150,14 @@ the deviation is recorded:
   there. `CREATE FUNCTION` through `Latu.sql/3` registers one, and `Latu.add_jar/3` puts the jar
   there in the first place: bytes you hand it, under a name, session-scoped. Otherwise SQL
   expressions, and the ~500 built-ins in `Latu.Functions`.
-- **Structured streaming and MLlib are separate packages, for different reasons.** The test for
-  streaming is whether a resource can be honestly bracketed. A checkpoint can
-  (`with_checkpoint/3`); a streaming query cannot, because it runs after you stop looking. MLlib
-  is separate on surface instead, and it ships as [`latu_ml`](https://hexdocs.pm/latu_ml): a
-  server-side model cache, Spark's on-disk model format and its own operator registry.
+- **A streaming query is a server-side object you stop yourself.** `Latu.write_stream/2` hands
+  back a `%Latu.StreamingQuery{}`; the query outlives the process that started it and runs until
+  `Latu.StreamingQuery.stop/1`, `Latu.with_stream/3`'s `after`, or the session is released.
+  Its failure raises nothing: `Latu.StreamingQuery.await_termination/2` returns it as
+  `{:error, _}`, and `Latu.StreamingQuery.exception/1` is the poll. `foreach` and `foreachBatch`
+  are not offered; they carry a closure.
+- **MLlib is a separate package**, [`latu_ml`](https://hexdocs.pm/latu_ml): a server-side model
+  cache, Spark's on-disk model format and its own operator registry.
 
 ## Observability
 

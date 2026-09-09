@@ -159,6 +159,7 @@ sources =
 # through the stubbed modules above.
 dependency_stand_ins = [
   "dev/standins/decimal.ex",
+  "dev/standins/json.ex",
   "dev/standins/proto_types.ex",
   "dev/standins/telemetry.ex"
 ]

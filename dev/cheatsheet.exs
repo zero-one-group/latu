@@ -20,7 +20,9 @@ defmodule Latu.Dev.Cheatsheet do
      "`import Latu.Column` — small enough to compose by hand."},
     {Latu.Window, "lib/latu/window.ex", "Windows", "`alias Latu.Window, as: W`."},
     {Latu.Catalog, "lib/latu/catalog.ex", "Catalog",
-     "Databases, tables and views — `spark.catalog` in PySpark."}
+     "Databases, tables and views — `spark.catalog` in PySpark."},
+    {Latu.StreamingQuery, "lib/latu/streaming_query.ex", "Streaming queries",
+     "The handle `Latu.write_stream/2` returns, and `spark.streams` — session-first."}
   ]
 
   def output, do: @output

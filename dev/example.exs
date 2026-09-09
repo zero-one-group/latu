@@ -386,6 +386,34 @@ IO.inspect(length(info.metrics), label: "plan nodes Spark reported metrics for")
 
 IO.inspect(summary, label: "over one materialisation")
 
+# A streaming query is the other thing that allocates, and it outlives this process: the bracket
+# stops it on the way out, as the checkpoint one releases. `:available_now` drains what the
+# source has and terminates by itself, so the wait returns; a processing-time trigger would run
+# until stopped. The progress report is Spark's own JSON, snake-cased, and the row counts live
+# on the sources — the top-level ones never cross the Connect wire.
+stamp = System.system_time(:millisecond)
+
+{:ok, batches} =
+  session
+  |> Latu.read(format: "parquet", schema: "id BIGINT", path: out, is_streaming: true)
+  |> Latu.with_stream(
+    [
+      format: "parquet",
+      path: "/tmp/latu_example/stream_out_#{stamp}",
+      checkpoint_location: "/tmp/latu_example/stream_ckpt_#{stamp}",
+      trigger: :available_now
+    ],
+    fn query ->
+      {:ok, true} = Latu.StreamingQuery.await_termination(query)
+
+      for report <- Latu.StreamingQuery.recent_progress!(query), source <- report.sources do
+        source.num_input_rows
+      end
+    end
+  )
+
+IO.inspect(batches, label: "rows per streamed batch")
+
 # Local data goes the other way: collect's inverse. Rows, column data or an Explorer frame
 # ship as Arrow; a `schema:` string casts server-side. Past the server's 64 MiB threshold the
 # data is cached as session artifacts instead — same call, no code change.

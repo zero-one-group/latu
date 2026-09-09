@@ -177,6 +177,10 @@ defmodule Latu.Plan do
     insert_into: :TABLE_SAVE_METHOD_INSERT_INTO
   ]
 
+  # `WriteStreamOperationStart.output_mode` is a string the server hands to `outputMode`, and
+  # skips when empty. Spark's three spellings, lowercased as PySpark sends them.
+  @output_modes [append: "append", complete: "complete", update: "update"]
+
   # One spelling per V2 terminal method, matching PySpark's create/replace/createOrReplace/
   # append/overwrite/overwritePartitions.
   @v2_modes [
@@ -248,10 +252,20 @@ defmodule Latu.Plan do
   verbatim, as PySpark passes a string. It is sent as `""` when absent: PySpark's reader always
   assigns the field, and an absent proto3-optional field is a different message. Options go
   through `to_options/1`.
+
+  `:is_streaming` is `Read`'s own field, beside the source rather than in it, and is what
+  PySpark's `readStream` sets. A plain bool, so it only reaches the wire when true.
   """
   @spec read(keyword()) :: relation()
   def read(opts \\ []) do
-    opts = Keyword.validate!(opts, format: nil, schema: "", paths: [], options: [])
+    opts =
+      Keyword.validate!(opts,
+        format: nil,
+        schema: "",
+        paths: [],
+        options: [],
+        is_streaming: false
+      )
 
     data_source = %Proto.Read.DataSource{
       format: format(opts[:format]),
@@ -260,7 +274,12 @@ defmodule Latu.Plan do
       options: Map.new(to_options(opts[:options]))
     }
 
-    relation({:read, %Proto.Read{read_type: {:data_source, data_source}}})
+    read = %Proto.Read{
+      read_type: {:data_source, data_source},
+      is_streaming: opts[:is_streaming]
+    }
+
+    relation({:read, read})
   end
 
   # A data source name is open-ended (any registered source), so an atom is spelled out rather
@@ -280,15 +299,25 @@ defmodule Latu.Plan do
 
   defp table_name(name), do: identifier(name, "table name")
 
-  @doc "Read a catalog table by name, with `to_options/1` options."
-  @spec table(String.t() | atom(), keyword() | map()) :: relation()
-  def table(name, options \\ []) do
+  @doc """
+  Read a catalog table by name.
+
+    * `:options` — `to_options/1`. Defaults to `[]`.
+    * `:is_streaming` — `read/1`'s flag, which is what PySpark's `readStream.table` sets.
+      Defaults to `false`.
+  """
+  @spec table(String.t() | atom(), keyword()) :: relation()
+  def table(name, opts \\ []) do
+    opts = Keyword.validate!(opts, options: [], is_streaming: false)
+
     named = %Proto.Read.NamedTable{
       unparsed_identifier: table_name(name),
-      options: Map.new(to_options(options))
+      options: Map.new(to_options(opts[:options]))
     }
 
-    relation({:read, %Proto.Read{read_type: {:named_table, named}}})
+    read = %Proto.Read{read_type: {:named_table, named}, is_streaming: opts[:is_streaming]}
+
+    relation({:read, read})
   end
 
   @doc """
@@ -904,18 +933,48 @@ defmodule Latu.Plan do
 
   @doc """
   Drop duplicate rows, by these columns or by all of them when none are given.
+
+    * `:within_watermark` — PySpark's `dropDuplicatesWithinWatermark`: on a streaming frame,
+      keep the state only as long as the watermark says a duplicate can still arrive. Defaults
+      to `false`.
   """
-  @spec deduplicate(relation(), [String.t() | atom()]) :: relation()
-  def deduplicate(%Proto.Relation{} = input, columns) when is_list(columns) do
+  @spec deduplicate(relation(), [String.t() | atom()], keyword()) :: relation()
+  def deduplicate(%Proto.Relation{} = input, columns, opts \\ []) when is_list(columns) do
+    opts = Keyword.validate!(opts, within_watermark: false)
+
     # Both flags are proto3_optional and PySpark sets both, in both cases. Absent is not false.
     dedup = %Proto.Deduplicate{
       input: input,
       column_names: Enum.map(columns, &identifier/1),
       all_columns_as_keys: columns == [],
-      within_watermark: false
+      within_watermark: opts[:within_watermark]
     }
 
     relation({:deduplicate, dedup})
+  end
+
+  @doc """
+  Mark a streaming frame's event-time column and how late a row may be: `WithWatermark`.
+
+  `delay_threshold` is a Spark interval string, `"10 seconds"`, passed verbatim as PySpark
+  passes it. Takes a `plan_id` of its own, as every relation does.
+  """
+  @spec with_watermark(relation(), String.t() | atom(), String.t()) :: relation()
+  def with_watermark(%Proto.Relation{} = input, event_time, delay_threshold)
+      when is_binary(delay_threshold) do
+    watermark = %Proto.WithWatermark{
+      input: input,
+      event_time: identifier(event_time),
+      delay_threshold: delay_threshold
+    }
+
+    relation({:with_watermark, watermark})
+  end
+
+  def with_watermark(%Proto.Relation{}, _event_time, delay_threshold) do
+    raise ArgumentError,
+          "a watermark delay is a Spark interval string like \"10 seconds\", " <>
+            "not #{inspect(delay_threshold)}"
   end
 
   @doc """
@@ -1282,6 +1341,185 @@ defmodule Latu.Plan do
     }
 
     %Proto.Command{command_type: {:remove_cached_remote_relation_command, remove}}
+  end
+
+  # =============================================
+  # Streaming
+  # =============================================
+
+  @doc """
+  Start a streaming write: `WriteStreamOperationStart`, the streaming side of `write/2`.
+
+      Plan.write_stream(relation, format: "parquet", path: "/data/out", output_mode: :append,
+                        trigger: :available_now, checkpoint_location: "/data/ckpt")
+
+    * `:format` — the sink's short name or class. Absent, the server's default.
+    * `:output_mode` — `:append`, `:complete` or `:update`. Sent as `""` when absent, which the
+      server skips, leaving its own default.
+    * `:trigger` — `:available_now`, `:once`, `{:processing_time, interval}` or
+      `{:continuous, interval}`, the interval a Spark duration string (`"10 seconds"`). Absent,
+      no arm of the oneof is set and the server runs its default trigger.
+    * `:query_name` — the name `StreamingQuery.name` and the UI show.
+    * `:path` or `:table` — the sink, a oneof on the wire, never both. Neither is allowed too,
+      for a sink that names its destination in options: `console`, `memory`, `kafka`.
+    * `:partition_by`, `:cluster_by` — column names.
+    * `:checkpoint_location` — the `checkpointLocation` option, reserved because every query
+      that has to resume sets it. Nothing to do with `checkpoint/2`.
+    * `:options` — `to_options/1`.
+
+  `foreach` and `foreachBatch` are not options: both arms carry a serialised closure, which
+  Latu cannot build. See `docs/deviations.md`.
+  """
+  @spec write_stream(relation(), keyword()) :: command()
+  def write_stream(%Proto.Relation{} = input, opts \\ []) do
+    opts =
+      Keyword.validate!(opts,
+        format: nil,
+        output_mode: nil,
+        trigger: nil,
+        query_name: nil,
+        path: nil,
+        table: nil,
+        partition_by: [],
+        cluster_by: [],
+        checkpoint_location: nil,
+        options: []
+      )
+
+    options = to_options(opts[:options]) ++ checkpoint_option(opts[:checkpoint_location])
+
+    start = %Proto.WriteStreamOperationStart{
+      input: input,
+      format: format(opts[:format]) || "",
+      options: Map.new(options),
+      partitioning_column_names: Enum.map(opts[:partition_by], &identifier/1),
+      clustering_column_names: Enum.map(opts[:cluster_by], &identifier/1),
+      trigger: trigger(opts[:trigger]),
+      output_mode: output_mode(opts[:output_mode]),
+      query_name: query_name(opts[:query_name]),
+      sink_destination: sink(opts[:path], opts[:table])
+    }
+
+    %Proto.Command{command_type: {:write_stream_operation_start, start}}
+  end
+
+  defp checkpoint_option(nil), do: []
+  defp checkpoint_option(path), do: [{"checkpointLocation", path(path)}]
+
+  # Plain strings on this message, not proto3-optional ones: absent is `""`, as PySpark leaves
+  # them, and the server tests `nonEmpty` before applying either.
+  defp query_name(nil), do: ""
+  defp query_name(name), do: identifier(name, "query name")
+
+  defp output_mode(nil), do: ""
+  defp output_mode(mode), do: lookup(@output_modes, mode, "output mode")
+
+  defp trigger(nil), do: nil
+  defp trigger(:available_now), do: {:available_now, true}
+  defp trigger(:once), do: {:once, true}
+
+  defp trigger({:processing_time, interval}) when is_binary(interval) do
+    {:processing_time_interval, interval}
+  end
+
+  defp trigger({:continuous, interval}) when is_binary(interval) do
+    {:continuous_checkpoint_interval, interval}
+  end
+
+  defp trigger(other) do
+    raise ArgumentError,
+          "a trigger is :available_now, :once, {:processing_time, interval} or " <>
+            "{:continuous, interval} with the interval a string, not #{inspect(other)}"
+  end
+
+  defp sink(nil, nil), do: nil
+  defp sink(path, nil), do: {:path, path(path)}
+  defp sink(nil, table), do: {:table_name, table_name(table)}
+
+  defp sink(_path, _table) do
+    raise ArgumentError, "a streaming write goes to :path or to :table, never both"
+  end
+
+  @doc """
+  One command on a running query: `StreamingQueryCommand`, keyed by the query's id and run id.
+
+  The server answers a stale run id with `CONNECT_INVALID_PLAN.STREAMING_QUERY_RUN_ID_MISMATCH`,
+  so a handle names the run it was taken from, not the query in general.
+
+    * `:status`, `:last_progress`, `:recent_progress`, `:stop`, `:process_all_available`,
+      `:exception` — the flag arms.
+    * `{:explain, extended?}` — a boolean.
+    * `{:await_termination, timeout}` — milliseconds, or `nil` to wait with no bound, which is
+      an absent `timeout_ms` on the wire and not a zero.
+  """
+  @spec streaming_query_command(String.t(), String.t(), atom() | tuple()) :: command()
+  def streaming_query_command(id, run_id, arm) when is_binary(id) and is_binary(run_id) do
+    command = %Proto.StreamingQueryCommand{
+      query_id: %Proto.StreamingQueryInstanceId{id: id, run_id: run_id},
+      command: query_arm(arm)
+    }
+
+    %Proto.Command{command_type: {:streaming_query_command, command}}
+  end
+
+  @query_flags [
+    :status,
+    :last_progress,
+    :recent_progress,
+    :stop,
+    :process_all_available,
+    :exception
+  ]
+
+  defp query_arm(flag) when flag in @query_flags, do: {flag, true}
+
+  defp query_arm({:explain, extended?}) when is_boolean(extended?) do
+    {:explain, %Proto.StreamingQueryCommand.ExplainCommand{extended: extended?}}
+  end
+
+  defp query_arm({:await_termination, timeout}) when is_nil(timeout) or is_integer(timeout) do
+    await = %Proto.StreamingQueryCommand.AwaitTerminationCommand{timeout_ms: timeout}
+    {:await_termination, await}
+  end
+
+  defp query_arm(other) do
+    raise ArgumentError,
+          "unknown streaming query command #{inspect(other)}, expected one of " <>
+            "#{inspect(@query_flags)}, {:explain, boolean} or {:await_termination, ms | nil}"
+  end
+
+  @doc """
+  One command on the session's query manager: `StreamingQueryManagerCommand`.
+
+    * `:active`, `:reset_terminated` — the flag arms.
+    * `{:get_query, id}` — by the query's id; the run id comes back with the answer.
+    * `{:await_any_termination, timeout}` — as `streaming_query_command/3`'s.
+
+  The three listener arms are not built. PySpark never sends them either: a client-side
+  listener opens the event bus with `StreamingQueryListenerBusCommand` instead, and the
+  server-side ones carry a serialised listener. See `docs/decisions.md`.
+  """
+  @spec streaming_query_manager_command(atom() | tuple()) :: command()
+  def streaming_query_manager_command(arm) do
+    command = %Proto.StreamingQueryManagerCommand{command: manager_arm(arm)}
+
+    %Proto.Command{command_type: {:streaming_query_manager_command, command}}
+  end
+
+  defp manager_arm(:active), do: {:active, true}
+  defp manager_arm(:reset_terminated), do: {:reset_terminated, true}
+  defp manager_arm({:get_query, id}) when is_binary(id), do: {:get_query, id}
+
+  defp manager_arm({:await_any_termination, timeout})
+       when is_nil(timeout) or is_integer(timeout) do
+    await = %Proto.StreamingQueryManagerCommand.AwaitAnyTerminationCommand{timeout_ms: timeout}
+    {:await_any_termination, await}
+  end
+
+  defp manager_arm(other) do
+    raise ArgumentError,
+          "unknown streaming query manager command #{inspect(other)}, expected :active, " <>
+            ":reset_terminated, {:get_query, id} or {:await_any_termination, ms | nil}"
   end
 
   # A merge's three clauses, and what each one may do. Not a Latu invention: PySpark's

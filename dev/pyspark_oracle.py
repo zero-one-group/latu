@@ -580,7 +580,92 @@ FIXTURES: list[tuple[str, str]] = [
      'merge_cmd(spark.range(5).alias("s")'
      '.mergeInto("people", F.expr("people.id = s.id"))'
      '.whenNotMatched().insert({"id": F.col("s.id"), "live": F.lit(True)}))'),
+
+    # structured streaming. The relations are plain DataFrame expressions: `readStream` builds
+    # a `Read` with `is_streaming` set beside the source, not in it, and the reader's schema is
+    # "" when unset as the batch reader's is. The commands go through `capture`, which runs
+    # PySpark's own terminal method and takes the Command off `execute_command` before it is
+    # sent — so `start()` never starts a query, and `StreamingQuery(...)` is a client object
+    # over an id the server has never heard of. Presence facts these pin: an unset trigger sets
+    # no arm; `output_mode`, `format` and `query_name` are "" when unset; `path` and
+    # `table_name` are a oneof; a `once` trigger is `once: true`; `awaitTermination()` with no
+    # timeout sends an AwaitTerminationCommand with `timeout_ms` ABSENT, not zero.
+    ("read_stream",
+     'spark.readStream.format("parquet").schema("id BIGINT")'
+     '.option("maxFilesPerTrigger", 1).load("/tmp/latu/src")'),
+    ("read_stream_table", 'spark.readStream.table("events")'),
+    ("with_watermark",
+     'spark.readStream.format("rate").load().withWatermark("timestamp", "10 seconds")'),
+    ("distinct_within_watermark",
+     'spark.readStream.format("rate").load().withWatermark("timestamp", "10 seconds")'
+     '.dropDuplicatesWithinWatermark(["value"])'),
+    ("distinct_within_watermark_all",
+     'spark.readStream.format("rate").load().withWatermark("timestamp", "10 seconds")'
+     '.dropDuplicatesWithinWatermark()'),
+    ("write_stream_available_now",
+     'capture(lambda: spark.readStream.format("rate").load().writeStream'
+     '.format("parquet").outputMode("append").queryName("rollups")'
+     '.trigger(availableNow=True).partitionBy("value")'
+     '.option("checkpointLocation", "/tmp/latu/ckpt").start("/tmp/latu/sink"))'),
+    ("write_stream_processing_time_table",
+     'capture(lambda: spark.readStream.format("rate").load().writeStream'
+     '.trigger(processingTime="10 seconds").clusterBy("value").toTable("sink_tbl"))'),
+    ("write_stream_once_console",
+     'capture(lambda: spark.readStream.format("rate").load().writeStream'
+     '.format("console").trigger(once=True).option("numRows", 5).start())'),
+    ("write_stream_continuous",
+     'capture(lambda: spark.readStream.format("rate").load().writeStream'
+     '.format("kafka").trigger(continuous="1 second").outputMode("update").start())'),
+    ("write_stream_defaults",
+     'capture(lambda: spark.readStream.format("rate").load().writeStream.start())'),
+    ("stream_status", "capture(lambda: query().status)"),
+    ("stream_last_progress", "capture(lambda: query().lastProgress)"),
+    ("stream_recent_progress", "capture(lambda: query().recentProgress)"),
+    ("stream_stop", "capture(lambda: query().stop())"),
+    ("stream_process_all_available", "capture(lambda: query().processAllAvailable())"),
+    ("stream_exception", "capture(lambda: query().exception())"),
+    ("stream_explain", "capture(lambda: query().explain())"),
+    ("stream_explain_extended", "capture(lambda: query().explain(extended=True))"),
+    ("stream_await_termination", "capture(lambda: query().awaitTermination(5))"),
+    ("stream_await_termination_unbounded", "capture(lambda: query().awaitTermination())"),
+    ("streams_active", "capture(lambda: spark.streams.active)"),
+    ("streams_get", 'capture(lambda: spark.streams.get("q-1"))'),
+    ("streams_await_any_termination", "capture(lambda: spark.streams.awaitAnyTermination(5))"),
+    ("streams_await_any_termination_unbounded",
+     "capture(lambda: spark.streams.awaitAnyTermination())"),
+    ("streams_reset_terminated", "capture(lambda: spark.streams.resetTerminated())"),
 ]
+
+
+class Captured(Exception):
+    """The Command PySpark was about to send. Raised instead of sending it."""
+
+    def __init__(self, command):
+        super().__init__("captured")
+        self.command = command
+
+
+def captured_command(client, thunk):
+    """Run `thunk`, intercept the one Command it sends, and hand it back unsent.
+
+    For the terminal methods that build AND execute in one go — `DataStreamWriter.start`,
+    every `StreamingQuery` verb — where there is no `_write` to finish by hand. The monkeypatch
+    goes on the *instance*, so it is undone by deleting the attribute. `latu_ml`'s oracle is
+    the original.
+    """
+
+    def intercepted(command, *_args, **_kwargs):
+        raise Captured(command)
+
+    client.execute_command = intercepted
+    try:
+        thunk()
+    except Captured as captured:
+        return captured.command
+    finally:
+        del client.execute_command
+
+    raise RuntimeError("nothing was sent; PySpark did not reach execute_command")
 
 
 def get_session():
@@ -738,6 +823,17 @@ def plan_for(spark, source: str):
         plan.root.CopyFrom(node.plan(spark.client))
         return plan
 
+    def capture(thunk):
+        # A Command taken off execute_command, as a Plan. See captured_command.
+        return command_plan(captured_command(spark.client, thunk))
+
+    def query():
+        # A handle over ids the server has never seen; only its commands are of interest, and
+        # capture stops every one of them before it is sent.
+        from pyspark.sql.connect.streaming.query import StreamingQuery
+
+        return StreamingQuery(spark, "q-1", "r-1", "rollups")
+
     import pyspark.sql.connect.plan as cat
     import pyspark.sql.types as T  # noqa: F401
     from pyspark.storagelevel import StorageLevel
@@ -748,7 +844,7 @@ def plan_for(spark, source: str):
         "sql_cmd": sql_cmd, "view_cmd": view_cmd, "catalog_plan": catalog_plan, "cat": cat,
         "analyze_arm": analyze_arm, "StorageLevel": StorageLevel, "T": T,
         "command_plan": command_plan, "merge_cmd": merge_cmd,
-        "node_plan": catalog_plan,
+        "node_plan": catalog_plan, "capture": capture, "query": query,
     }
     result = eval(source, env)  # noqa: S307
     if isinstance(result, Message):

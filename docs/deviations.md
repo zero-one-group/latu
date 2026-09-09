@@ -627,6 +627,60 @@ whatever a Spark release adds, with no wrapper to keep in step.
 `changes` alone says too little at the top level of a facade, and the relation is
 `RelationChanges`.
 
+### `spark.readStream.format(f).schema(s).load(path)` → `read/2` with `is_streaming: true`
+
+`readStream` is `read` with one flag set on the same `Read` message, so it is one option rather
+than a second reader with the same eleven verbs. `spark.readStream.table(t)` is `table/3` with
+the same key.
+
+### `df.writeStream.format(f).trigger(availableNow=True).option("checkpointLocation", p).start(path)` → `write_stream/2`
+
+The streaming side of `write/2`, one call for PySpark's builder chain and for both terminals:
+`start(path)` is `path:` and `toTable(name)` is `table:`. `checkpointLocation` is the reserved
+key `checkpoint_location:`, because every query that has to resume sets it and its name collides
+with `checkpoint/2` in the reader's head; `trigger(processingTime="10 seconds")` is
+`trigger: {:processing_time, "10 seconds"}`, `availableNow=True` is `:available_now`.
+
+### `query.awaitTermination()` blocks in one call → `await_termination/2` loops bounded server waits
+
+**Behaviour.** The same answer, in slices. A streaming command sends nothing while it waits, and
+a Connect server ends any silent response stream every `senderMaxStreamDuration`, so one
+unbounded `awaitTermination` costs one empty reattach per sender duration and runs into Latu's
+guard against a server that never sends. `await_termination/2` sends `awaitTermination(interval)`
+until it answers true, with `:timeout` and `:interval` as options. Spark's semantics are kept,
+including the exception of a failed query coming back as `{:error, _}`.
+
+### `query.status` → three keys; `query.isActive` → a fourth → `status/1` answers all four
+
+The wire carries `isActive` in the same `StatusResult` PySpark reads the other three from. Latu
+hands back what arrived, snake-cased: `:message`, `:is_data_available`, `:is_trigger_active`,
+`:is_active`. `is_active/1` reads the last one.
+
+### `query.lastProgress` → `StreamingQueryProgress` → `last_progress/1` → a snake-cased map
+
+**Behaviour, of a sort.** PySpark parses Spark's progress JSON into a typed object whose
+`numInputRows` and the two rate fields are `None` over Connect, because the server never sends
+them: the JSON on the wire is lossy against the driver's report. Latu decodes the JSON into a map,
+keys snake-cased into atoms, and leaves the values under `start_offset`, `end_offset`,
+`latest_offset` and `observed_metrics` exactly as they arrived, since an offset is a string for a
+file source and an object for Kafka. The aggregates are summed from `:sources`, never invented.
+
+### `query.explain(extended=True)` → `explain(query, mode: :extended)`
+
+The frame's `explain/2` takes `mode:` with five values; the query's has two and spells them the
+same way, so the two read alike.
+
+### `dropDuplicatesWithinWatermark(subset)` → `distinct/3` with `within_watermark: true`
+
+`Deduplicate` is one message with a `within_watermark` flag, and `distinct/2` already is
+`dropDuplicates`. A flag on the verb rather than a second verb, as `checkpoint/2`'s `local:` is.
+`distinct(df, [], within_watermark: true)` is the all-columns form.
+
+### `spark.streams.active`, `.get(id)`, `.awaitAnyTermination()`, `.resetTerminated()` → `Latu.StreamingQuery`
+
+Session-first verbs on the query's own module, as `spark.catalog` is `Latu.Catalog`. `get/2`
+answers `{:ok, nil}` for an unknown id where PySpark returns `None`.
+
 ### `df.repartitionByRange(numPartitions_or_col, *cols)`
 
 `repartition_by_range/3` with `num_partitions:`. PySpark overloads its first argument as an int
@@ -681,6 +735,18 @@ A bare reference to a frame outside the plan. Spark refuses it —
 `CANNOT_RESOLVE_DATAFRAME_COLUMN`, hoisted or not (`docs/decisions.md`) — so
 PySpark's version does not work either. Use a subquery: `Latu.scalar/1`, `Latu.exists/1`,
 `Latu.Column.isin/2` over a DataFrame.
+
+### `writeStream.foreach(f)` and `.foreachBatch(f)`
+
+Both arms of `StreamingForeachFunction` carry a serialised closure, Python's or Scala's, which is
+the UDF boundary every Spark Connect client except Python and Scala sits behind. `write_stream/2`
+to a sink Spark has a connector for is the route; a Spark SQL UDF registered on the cluster can
+run inside the query through `Latu.Column.fun/3`.
+
+### `spark.streams.addListener(listener)`
+
+Streaming S2. The client-side listener opens an event channel PySpark reads on a background
+thread; Latu will expose it as a lazy `Stream` of decoded events, holding no process.
 
 ## Not in PySpark at all
 
