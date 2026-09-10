@@ -3,7 +3,7 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
-## Unreleased
+## 0.6.1 — 2026-09-10
 
 **The `docker run` line in the README and the quick start now starts a server that stays up.**
 It was missing `--wait`, and without it `start-connect-server.sh` daemonizes, the container's
