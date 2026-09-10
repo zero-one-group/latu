@@ -13,8 +13,8 @@ with the `:available_now`, `:once`, processing-time and continuous triggers and 
 loop of bounded server waits rather than one call, because a Connect server cuts a silent
 response stream every `senderMaxStreamDuration`; the semantics are Spark's. Progress and status
 decode into snake-cased maps of Spark's own JSON. `Latu.Error` gains the kind `:query`, for a
-streaming query's own failure as `exception/1` reports it. `foreach`, `foreachBatch` and the
-listener bus are not in this release; `docs/deviations.md` says why, and the bus is next.
+streaming query's own failure as `exception/1` reports it. `foreach` and `foreachBatch` are not
+offered at all, because both carry a serialised closure; `docs/deviations.md` says why.
 
 **The streaming listener bus**, as `Latu.StreamingQuery.events/1`: a lazy `Stream` of every
 streaming event on the session, each one Spark's own JSON snake-cased under a `:type` of

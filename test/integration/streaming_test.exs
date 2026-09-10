@@ -198,20 +198,31 @@ defmodule Latu.Integration.StreamingTest do
     # Runs the whole cycle twice on one session, and the second run is the point: the server
     # answers a second `add_listener_bus_listener` with silence, so if halting the first stream
     # had not sent `remove_listener_bus_listener`, this would hang rather than fail.
+    #
+    # **The bus opens before the query starts**, because a server-side listener only posts what
+    # happens after it is registered. Starting an `:available_now` query first is a race it can
+    # win: three tiny files can drain before the bus exists, and then nothing ever arrives.
     test "delivers a query's events, and closes so the next one can open", %{session: session} do
       for run <- 1..2 do
-        frame = stream(session, bounded_source(session))
-        {:ok, query} = Latu.write_stream(frame, sink_opts(:available_now))
+        source = bounded_source(session)
+        collecting = collect_until_terminated(session)
 
-        events = collect_until_terminated(session, query)
+        # No way to observe the ack — `events/1` filters it — so this is the one sleep, and it
+        # is why the whole describe block is `:streaming`-tagged.
+        Process.sleep(2_000)
 
-        assert Enum.any?(events, &(&1.type == :progress)), "run #{run}: no progress event"
+        {:ok, query} = Latu.write_stream(stream(session, source), sink_opts(:available_now))
+        events = await_events(collecting, run)
 
         progress = Enum.find(events, &(&1.type == :progress))
+        types = Enum.map(events, & &1.type)
+        assert progress, "run #{run}: no progress event in #{inspect(types)}"
         assert is_integer(progress.progress.batch_id)
+        assert progress.progress.run_id == query.run_id
         assert progress.progress.name == query.name
 
-        terminated = Enum.find(events, &(&1.type == :terminated))
+        terminated = List.last(events)
+        assert terminated.type == :terminated
         assert terminated.id == query.id
         assert terminated.run_id == query.run_id
         assert terminated.exception == nil
@@ -219,32 +230,33 @@ defmodule Latu.Integration.StreamingTest do
     end
   end
 
+  # Opens the bus and collects until the first `:terminated`. The session is fresh and runs one
+  # query at a time, so the first one is unambiguous — and the query does not exist yet when
+  # this starts, which is the whole point.
+  defp collect_until_terminated(session) do
+    Task.async(fn ->
+      session
+      |> StreamingQuery.events()
+      |> Enum.reduce_while([], fn event, seen ->
+        if event.type == :terminated, do: {:halt, [event | seen]}, else: {:cont, [event | seen]}
+      end)
+      |> Enum.reverse()
+    end)
+  end
+
   # Bounded on purpose: after the bus is acknowledged an idle stream is legitimately silent
   # forever (`Latu.Client.Execution`'s `:expected`), so nothing but this stops the wait. A
   # timeout leaves the bus registered; `on_exit`'s `release: true` closes the session, which is
   # what the server cleans it up on.
-  defp collect_until_terminated(session, query) do
-    task =
-      Task.async(fn ->
-        session
-        |> StreamingQuery.events()
-        |> Stream.filter(&ours?(&1, query))
-        |> Enum.reduce_while([], fn event, seen ->
-          if event.type == :terminated, do: {:halt, [event | seen]}, else: {:cont, [event | seen]}
-        end)
-        |> Enum.reverse()
-      end)
-
+  defp await_events(task, run) do
     case Task.yield(task, 120_000) || Task.shutdown(task, :brutal_kill) do
-      {:ok, events} -> events
-      nil -> flunk("no terminated event in 120s; the bus may not be delivering")
+      {:ok, events} ->
+        events
+
+      nil ->
+        flunk("run #{run}: no terminated event in 120s — the bus may not be delivering")
     end
   end
-
-  # A progress event carries the run id inside its report; the other two carry it at the top.
-  # S1's assertions pinned both shapes against a live server.
-  defp ours?(%{type: :progress} = event, query), do: event.progress.run_id == query.run_id
-  defp ours?(event, query), do: event[:run_id] == query.run_id
 
   # The top-level row counts never arrive over Connect (docs/decisions.md); the sources' do.
   defp input_rows(reports) do
