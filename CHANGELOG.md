@@ -3,7 +3,7 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
-## Unreleased
+## 0.6.0 — 2026-09-10
 
 **Structured streaming.** `read/2` and `table/3` take `is_streaming: true`; `with_watermark/3`
 and `distinct/3`'s `within_watermark:` cover the stateful side; `write_stream/2` starts a query
@@ -28,8 +28,16 @@ but still fatal before it. Internal, and the reason is arithmetic: a Connect ser
 silent stream every `senderMaxStreamDuration` whether or not it sent anything, so at 100 a
 healthy bus died after eight minutes on a 5s sender.
 
-Additive; no migration. The 2026-09-02 decision that streaming was a separate package is
-reversed in `docs/decisions.md`.
+**One breaking change, in the plan layer.** `Latu.Plan.table/2`'s second argument used to *be*
+the reader options; it is now an option list, so they move under `options:` and `is_streaming:`
+joins them — `Plan.table("t", merge_schema: true)` becomes
+`Plan.table("t", options: [merge_schema: true])`. That is `Latu.Plan.read/1`'s shape, which the
+old one gratuitously differed from. A map, previously accepted directly, is refused by name.
+**`Latu.table/2,3` is unchanged** and still takes reader options flat, so this only reaches code
+building plans through `Latu.Plan` itself. Everything else in this release is additive.
+
+The 2026-09-02 decision that streaming was a separate package is reversed in
+`docs/decisions.md`.
 
 ## 0.5.0 — 2026-09-08
 

@@ -307,7 +307,19 @@ defmodule Latu.Plan do
       Defaults to `false`.
   """
   @spec table(String.t() | atom(), keyword()) :: relation()
-  def table(name, opts \\ []) do
+  def table(name, opts \\ [])
+
+  # Until 0.6.0 the second argument *was* the reader options, keyword or map. Refuse the map
+  # form by name rather than letting `Keyword.validate!`'s own guard answer with a
+  # FunctionClauseError; the keyword form is caught by `Keyword.validate!`, which lists the
+  # keys it does take. `Latu.table/3` still takes both shapes flat.
+  def table(_name, opts) when is_map(opts) and not is_struct(opts) do
+    raise ArgumentError,
+          "table/2 takes an option list, and reader options go under :options — " <>
+            "options: #{inspect(opts)}"
+  end
+
+  def table(name, opts) do
     opts = Keyword.validate!(opts, options: [], is_streaming: false)
 
     named = %Proto.Read.NamedTable{
