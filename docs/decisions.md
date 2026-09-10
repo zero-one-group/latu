@@ -1650,10 +1650,14 @@ caller's own exception. A failure there leaves the bus registered until the sess
 **The bus's own ExecutePlan reports progress, and `events/1` drops it.** `ExecutionProgress` is
 the one response the execution framework injects into any stream rather than the command handler
 sending it, so a bus gets `{:progress, %Latu.Progress{}}` like every other execution — empty,
-because a bus has no stages. Dropped in the stream, as `Latu.stream/2` drops it. It still emits
-`[:latu, :result, :progress]`, which on a long-lived bus is noise a dashboard has to filter by
-`operation_id`; that is the framework's behaviour for any command execution and not worth
-special-casing.
+because a bus has no stages. Dropped in the stream, as `Latu.stream/2` drops it.
+
+The server sends one of these per `progress.reportInterval` for the life of the stream, and
+`enqueueProgressMessage(force = true)` bypasses its own dirty check, so on the compose server
+that is every 100 ms forever. It costs nothing: `Client.progressed/2` compares the proto by
+value and only emits when it changes, so an always-empty report yields **one** element and
+**one** `[:latu, :result, :progress]` event for the whole bus. The dedupe that exists for
+replayed reattach responses is what makes a long-lived silent stream free.
 
 **An event type this client has not met passes through as `:unknown` with its JSON undecoded**,
 rather than raising as PySpark does. Dropping a live bus because a newer server invented a
