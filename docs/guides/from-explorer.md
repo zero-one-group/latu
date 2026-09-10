@@ -238,6 +238,19 @@ One cost worth knowing: below the server's threshold the Arrow bytes travel **in
 The frame retains them, so does every frame derived from it, and they are re-sent on every
 action. A local frame that is small but not tiny is the one that sits in your memory.
 
+### Handing over a file rather than a frame
+
+The other way across is a file: `Latu.write/2` on one side, `Explorer.DataFrame.from_parquet`
+on the other. The path in each call names a different disk. Latu's is the server's, Explorer's
+is yours, and they are the same disk only when Spark runs on this machine.
+
+Ownership is the part that surprises people. A containerised Spark writes as its own user, uid
+185 in the official image, so on Linux your own process cannot rename or delete the directory it
+just produced. Running the container as your own uid looks like the fix and is not one: the
+image's log directory and its group write bit both belong to 185, and the entrypoint that would
+paper over the mismatch is the one a custom `entrypoint:` replaces. Install Spark on the machine
+when files are the handover, and keep the container for a server nothing local has to touch.
+
 ### Where to put the boundary
 
 **Spark for the scan, the shuffle and the join; Explorer for the last mile.** Aggregate on the

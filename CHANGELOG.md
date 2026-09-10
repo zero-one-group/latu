@@ -3,6 +3,22 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.6.1 — 2026-09-10
+
+**The `docker run` line in the README and the quick start now starts a server that stays up.**
+It was missing `--wait`, and without it `start-connect-server.sh` daemonizes, the container's
+foreground process returns and the container exits with the server it just launched. It also
+passed `--packages org.apache.spark:spark-connect_2.13:...`, which the Spark 4.x assembly
+already carries: `docker-compose.yml` has never passed it and the whole suite runs against
+that server.
+
+**Two guide notes on running Spark in a container.** `quick-start.md` says a container is the
+fastest way to a server and the wrong one once you write files. `from-explorer.md` gains
+"Handing over a file rather than a frame", because that page covered the Arrow boundary in
+both directions and never the file one, where `Latu.write/2`'s path and the path Explorer
+reads name different disks. A bind-mounted Spark writes as uid 185, so on Linux the process
+that asked for the write cannot rename what came back.
+
 ## 0.6.0 — 2026-09-10
 
 **Structured streaming.** `read/2` and `table/3` take `is_streaming: true`; `with_watermark/3`

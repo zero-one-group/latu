@@ -15,11 +15,16 @@ bindings. The pattern matches are the assertions.
 Point at a cluster's `sc://` URL, or run one locally:
 
 ```bash
-docker run -p 15002:15002 apache/spark:4.2.0 \
-  /opt/spark/sbin/start-connect-server.sh --packages org.apache.spark:spark-connect_2.13:4.2.0
+docker run -p 15002:15002 apache/spark:4.2.0 /opt/spark/sbin/start-connect-server.sh --wait
 ```
 
 In this repo, `docker compose up -d spark-connect` does it.
+
+A container is the fastest way to a server. It is the wrong one once you write files. A path
+is the server's, so a container writes it as the container's user, uid 185 in this image. Your
+own process may then be unable to rename or delete what Spark just produced. Install Spark on
+the machine if the output is going anywhere near Explorer or your editor.
+[Coming from Explorer](from-explorer.md) has the detail.
 
 ## Connect
 
