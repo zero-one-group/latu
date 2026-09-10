@@ -192,6 +192,60 @@ defmodule Latu.Integration.StreamingTest do
     end
   end
 
+  describe "the listener bus" do
+    @describetag :streaming
+
+    # Runs the whole cycle twice on one session, and the second run is the point: the server
+    # answers a second `add_listener_bus_listener` with silence, so if halting the first stream
+    # had not sent `remove_listener_bus_listener`, this would hang rather than fail.
+    test "delivers a query's events, and closes so the next one can open", %{session: session} do
+      for run <- 1..2 do
+        frame = stream(session, bounded_source(session))
+        {:ok, query} = Latu.write_stream(frame, sink_opts(:available_now))
+
+        events = collect_until_terminated(session, query)
+
+        assert Enum.any?(events, &(&1.type == :progress)), "run #{run}: no progress event"
+
+        progress = Enum.find(events, &(&1.type == :progress))
+        assert is_integer(progress.progress.batch_id)
+        assert progress.progress.name == query.name
+
+        terminated = Enum.find(events, &(&1.type == :terminated))
+        assert terminated.id == query.id
+        assert terminated.run_id == query.run_id
+        assert terminated.exception == nil
+      end
+    end
+  end
+
+  # Bounded on purpose: after the bus is acknowledged an idle stream is legitimately silent
+  # forever (`Latu.Client.Execution`'s `:expected`), so nothing but this stops the wait. A
+  # timeout leaves the bus registered; `on_exit`'s `release: true` closes the session, which is
+  # what the server cleans it up on.
+  defp collect_until_terminated(session, query) do
+    task =
+      Task.async(fn ->
+        session
+        |> StreamingQuery.events()
+        |> Stream.filter(&ours?(&1, query))
+        |> Enum.reduce_while([], fn event, seen ->
+          if event.type == :terminated, do: {:halt, [event | seen]}, else: {:cont, [event | seen]}
+        end)
+        |> Enum.reverse()
+      end)
+
+    case Task.yield(task, 120_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, events} -> events
+      nil -> flunk("no terminated event in 120s; the bus may not be delivering")
+    end
+  end
+
+  # A progress event carries the run id inside its report; the other two carry it at the top.
+  # S1's assertions pinned both shapes against a live server.
+  defp ours?(%{type: :progress} = event, query), do: event.progress.run_id == query.run_id
+  defp ours?(event, query), do: event[:run_id] == query.run_id
+
   # The top-level row counts never arrive over Connect (docs/decisions.md); the sources' do.
   defp input_rows(reports) do
     Enum.sum(for report <- reports, source <- report.sources, do: source.num_input_rows)

@@ -743,10 +743,28 @@ the UDF boundary every Spark Connect client except Python and Scala sits behind.
 to a sink Spark has a connector for is the route; a Spark SQL UDF registered on the cluster can
 run inside the query through `Latu.Column.fun/3`.
 
-### `spark.streams.addListener(listener)`
+### `spark.streams.addListener(listener)` → `Latu.StreamingQuery.events/1`, a lazy `Stream`
 
-Streaming S2. The client-side listener opens an event channel PySpark reads on a background
-thread; Latu will expose it as a lazy `Stream` of decoded events, holding no process.
+**Behaviour.** PySpark registers a listener object, spawns a thread and calls back on it, and
+`removeListener` blocks until the thread drains. Latu has no thread to call back on, so the
+events are the return value: a lazy `Stream` the caller runs wherever it likes, as
+`Latu.Progress` does for a batch query. Opening happens on first enumeration and closing when
+the enumeration ends, so `Stream.take_while/2` and a raise both close the bus.
+
+Three consequences worth knowing rather than discovering. Only one bus can exist per session
+and the server answers a second `add` with silence, so a second concurrent `events/1` waits and
+then fails naming that as the cause. Events are at-least-once, because a reattach replays what
+the server still holds and neither client acknowledges anything. And an idle bus is silent
+indefinitely, which is why it is the one execution where `Latu.Client.Execution` treats silence
+as normal — after the first response, never before it.
+
+### `listener.onQueryProgress(event)` → an element with `type: :progress`
+
+PySpark has three callbacks and a class per event. Latu has one stream and a `:type` key, and
+the payload is Spark's JSON snake-cased, so a progress event's `:progress` is exactly what
+`Latu.StreamingQuery.last_progress/1` returns. An event type this client has not met arrives as
+`type: :unknown` with its JSON undecoded rather than dropping the bus, which is the same choice
+the transport makes for a response arm it does not handle.
 
 ## Not in PySpark at all
 

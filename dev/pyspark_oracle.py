@@ -634,6 +634,14 @@ FIXTURES: list[tuple[str, str]] = [
     ("streams_await_any_termination_unbounded",
      "capture(lambda: spark.streams.awaitAnyTermination())"),
     ("streams_reset_terminated", "capture(lambda: spark.streams.resetTerminated())"),
+
+    # the listener bus. PySpark reaches these through StreamingQueryListenerBus, which spawns a
+    # thread and blocks on the ack, so the commands are built here the way readwriter.py's
+    # writes are: the two lines of query.py that set the arm, minus the execution. `add` goes
+    # out on execute_command_as_iterator rather than execute_command, and that is the only
+    # difference between them on the wire -- the Command is what a fixture pins.
+    ("listener_bus_add", 'bus_cmd("add_listener_bus_listener")'),
+    ("listener_bus_remove", 'bus_cmd("remove_listener_bus_listener")'),
 ]
 
 
@@ -834,6 +842,13 @@ def plan_for(spark, source: str):
 
         return StreamingQuery(spark, "q-1", "r-1", "rollups")
 
+    def bus_cmd(arm):
+        # StreamingQueryListenerBus's two commands, minus the thread and the blocking ack.
+        cmd = proto.StreamingQueryListenerBusCommand()
+        setattr(cmd, arm, True)
+
+        return command_plan(proto.Command(streaming_query_listener_bus_command=cmd))
+
     import pyspark.sql.connect.plan as cat
     import pyspark.sql.types as T  # noqa: F401
     from pyspark.storagelevel import StorageLevel
@@ -844,7 +859,7 @@ def plan_for(spark, source: str):
         "sql_cmd": sql_cmd, "view_cmd": view_cmd, "catalog_plan": catalog_plan, "cat": cat,
         "analyze_arm": analyze_arm, "StorageLevel": StorageLevel, "T": T,
         "command_plan": command_plan, "merge_cmd": merge_cmd,
-        "node_plan": catalog_plan, "capture": capture, "query": query,
+        "node_plan": catalog_plan, "capture": capture, "query": query, "bus_cmd": bus_cmd,
     }
     result = eval(source, env)  # noqa: S307
     if isinstance(result, Message):

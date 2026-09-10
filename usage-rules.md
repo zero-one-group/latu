@@ -156,6 +156,10 @@ the deviation is recorded:
   Its failure raises nothing: `Latu.StreamingQuery.await_termination/2` returns it as
   `{:error, _}`, and `Latu.StreamingQuery.exception/1` is the poll. `foreach` and `foreachBatch`
   are not offered; they carry a closure.
+- **`Latu.StreamingQuery.events/1` is the listener bus, and there is one per session.** A lazy
+  `Stream` of every streaming event, opened on first enumeration and closed when the
+  enumeration ends. Two at once on one session is the mistake to avoid: the server answers the
+  second with silence. Events are at-least-once.
 - **MLlib is a separate package**, [`latu_ml`](https://hexdocs.pm/latu_ml): a server-side model
   cache, Spark's on-disk model format and its own operator registry.
 

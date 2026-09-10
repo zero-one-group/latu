@@ -110,6 +110,7 @@ defmodule Latu.Plan do
   def write_stream(input, opts \\ []), do: {:command, {:write_stream, input, opts}}
   def streaming_query_command(id, run_id, arm), do: {:command, {:query, id, run_id, arm}}
   def streaming_query_manager_command(arm), do: {:command, {:query_manager, arm}}
+  def streaming_query_listener_bus_command(arm), do: {:command, {:listener_bus, arm}}
   def merge_action(clause, action, opts \\ []), do: {:merge_action, clause, action, opts}
   def merge_condition(condition), do: {:merge_condition, condition}
 

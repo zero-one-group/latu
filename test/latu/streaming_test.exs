@@ -223,6 +223,74 @@ defmodule Latu.StreamingTest do
     end
   end
 
+  describe "StreamingQueryListenerBusCommand against PySpark" do
+    test "the two arms" do
+      :add
+      |> Plan.streaming_query_listener_bus_command()
+      |> assert_wire_command("listener_bus_add")
+
+      :remove
+      |> Plan.streaming_query_listener_bus_command()
+      |> assert_wire_command("listener_bus_remove")
+    end
+
+    test "an unknown arm names the two" do
+      assert_raise ArgumentError, ~r/:add or :remove/, fn ->
+        Plan.streaming_query_listener_bus_command(:pause)
+      end
+    end
+  end
+
+  describe "events/1 decoding" do
+    test "a progress event carries what last_progress/1 answers" do
+      json = ~s({"progress": {"batchId": 2, "sources": [{"numInputRows": 4}]}})
+
+      assert StreamingQuery.decode_event(event(:QUERY_PROGRESS_EVENT, json)) ==
+               %{type: :progress, progress: %{batch_id: 2, sources: [%{num_input_rows: 4}]}}
+    end
+
+    test "an idle event carries its own three fields" do
+      json = ~s({"id": "q", "runId": "r", "timestamp": "2026-09-10T00:00:00Z"})
+
+      assert StreamingQuery.decode_event(event(:QUERY_IDLE_EVENT, json)) ==
+               %{type: :idle, id: "q", run_id: "r", timestamp: "2026-09-10T00:00:00Z"}
+    end
+
+    test "a terminated event carries the failure, and nil when there was none" do
+      failed = ~s({"id": "q", "runId": "r", "exception": "boom", "errorClassOnException": "X"})
+
+      assert StreamingQuery.decode_event(event(:QUERY_TERMINATED_EVENT, failed)) ==
+               %{
+                 type: :terminated,
+                 id: "q",
+                 run_id: "r",
+                 exception: "boom",
+                 error_class_on_exception: "X"
+               }
+
+      clean = ~s({"id": "q", "runId": "r", "exception": null, "errorClassOnException": null})
+
+      assert %{type: :terminated, exception: nil, error_class_on_exception: nil} =
+               StreamingQuery.decode_event(event(:QUERY_TERMINATED_EVENT, clean))
+    end
+
+    # A newer server can invent a fourth type, and dropping a live bus over it would be worse
+    # than handing it on undecoded. `Execution`'s own catch-all makes the same choice.
+    test "a type this client has not met passes through raw, undecoded" do
+      assert StreamingQuery.decode_event(event(:QUERY_PROGRESS_UNSPECIFIED, "{not json}")) ==
+               %{type: :unknown, event_type: :QUERY_PROGRESS_UNSPECIFIED, json: "{not json}"}
+    end
+  end
+
+  describe "events/1" do
+    test "refuses an unconnected session at the call, not at the enumeration", %{session: s} do
+      # `Latu.Client.responses/3`'s contract, inherited: an enumeration has no way to return an
+      # error, so the connected check happens while there is still a call site to raise from.
+      # What is lazy is the bus — no ExecutePlan goes out until the stream is enumerated.
+      assert_raise Latu.Error, ~r/not connected/, fn -> StreamingQuery.events(s) end
+    end
+  end
+
   describe "the handle" do
     test "is built from the start result, with an empty name read as none", %{session: s} do
       started = %{query_id: %{id: "q-1", run_id: "r-1"}, name: ""}
@@ -262,4 +330,9 @@ defmodule Latu.StreamingTest do
 
   # The ids are the ones `query()` carries in the oracle, where the server never sees them.
   defp arm(arm), do: Plan.streaming_query_command("q-1", "r-1", arm)
+
+  # `decode_event/1` matches the two fields it reads rather than the struct, so a plain map is
+  # the whole double — `dev/standins/proto_types.ex` says why that is the convention. A pattern
+  # tightened to the struct later would turn these red, which is the right way round.
+  defp event(type, json), do: %{event_type: type, event_json: json}
 end

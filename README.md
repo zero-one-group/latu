@@ -179,8 +179,9 @@ and SQLSTATE, `:telemetry` events, and Livebook rendering behind an optional `:k
 **Structured streaming.** `read/2` with `is_streaming: true`, `with_watermark/3`, and
 `write_stream/2` with the `:available_now`, processing-time and continuous triggers, returning a
 `%Latu.StreamingQuery{}` whose verbs are Spark's own: `await_termination`, `status`,
-`last_progress`, `stop`. `with_stream/3` is the bracket. What is out is `foreachBatch`, which
-carries a closure no client but Python can build.
+`last_progress`, `stop`. `with_stream/3` is the bracket, and `events/1` is the listener bus as a
+lazy stream. What is out is `foreachBatch`, which carries a closure no client but Python can
+build.
 
 The [cheatsheet](https://hexdocs.pm/latu/cheatsheet.html) is the whole surface, one line each.
 

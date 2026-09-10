@@ -17,9 +17,11 @@ defmodule Latu.Telemetry do
   | `[:latu, :reattach, :attempt]` | `backoff`, `attempt` | an ordinary mid-stream reattach |
   | `[:latu, :result, :batch]` | `rows`, `bytes` | each Arrow batch |
   | `[:latu, :result, :progress]` | `percent` | each progress message from the server |
+  | `[:latu, :streaming, :event]` | `system_time` | each streaming listener event |
 
   Metadata is `rpc`, `outcome` and `error_class` on the RPC events, and `session_id` plus
-  `operation_id` on everything that belongs to an execution. The RPC events carry no
+  `operation_id` on everything that belongs to an execution;
+  `[:latu, :streaming, :event]` adds `event_type`, the enum Spark sent. The RPC events carry no
   `operation_id`; a `[:latu, :retry, :attempt]` for a unary call carries `rpc` in its place;
   `[:latu, :execute, :stop]` carries an `outcome` of `:ok`, `:error` or `:abandoned`.
   Durations are in native time units, as `:telemetry.span/3`'s are.
@@ -99,6 +101,16 @@ defmodule Latu.Telemetry do
   @spec progress(non_neg_integer(), map()) :: :ok
   def progress(percent, ids) do
     :telemetry.execute([:latu, :result, :progress], %{percent: percent}, ids)
+  end
+
+  @doc false
+  @spec listener_event(atom() | integer(), map()) :: :ok
+  def listener_event(type, ids) do
+    metadata = Map.put(ids, :event_type, type)
+
+    measurements = %{system_time: System.system_time()}
+
+    :telemetry.execute([:latu, :streaming, :event], measurements, metadata)
   end
 
   # `Latu.Client.rpc/3` returns exactly these two shapes, so this is total. An error class is

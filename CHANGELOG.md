@@ -16,6 +16,18 @@ decode into snake-cased maps of Spark's own JSON. `Latu.Error` gains the kind `:
 streaming query's own failure as `exception/1` reports it. `foreach`, `foreachBatch` and the
 listener bus are not in this release; `docs/deviations.md` says why, and the bus is next.
 
+**The streaming listener bus**, as `Latu.StreamingQuery.events/1`: a lazy `Stream` of every
+streaming event on the session, each one Spark's own JSON snake-cased under a `:type` of
+`:progress`, `:idle`, `:terminated` or `:unknown`. Opens on first enumeration, closes when the
+enumeration ends. `[:latu, :streaming, :event]` is emitted per event.
+
+**`Latu.Client.Execution`'s empty-reattach guard is now per-execution.** It was a flat 100
+empty response streams for everything; a result or a command still gets that, and the listener
+bus gets `silence: :expected`, where an idle stream is normal *after* the server has answered
+but still fatal before it. Internal, and the reason is arithmetic: a Connect server ends a
+silent stream every `senderMaxStreamDuration` whether or not it sent anything, so at 100 a
+healthy bus died after eight minutes on a 5s sender.
+
 Additive; no migration. The 2026-09-02 decision that streaming was a separate package is
 reversed in `docs/decisions.md`.
 

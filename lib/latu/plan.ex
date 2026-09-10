@@ -1522,6 +1522,32 @@ defmodule Latu.Plan do
             ":reset_terminated, {:get_query, id} or {:await_any_termination, ms | nil}"
   end
 
+  @doc """
+  Open or close the session's client-side listener bus: `StreamingQueryListenerBusCommand`.
+
+    * `:add` — the server registers its side and answers on a **long-lived** `ExecutePlan`:
+      first an acknowledgement, then every event until the bus is closed. One per session; a
+      second `:add` is answered with silence.
+    * `:remove` — closes it, on an `ExecutePlan` of its own. That is the only thing that ends
+      the events stream, so a consumer cannot close its own.
+
+  Neither arm carries a payload, which is why this is reachable where the three
+  `StreamingQueryManagerCommand` listener arms are not. See `docs/decisions.md`.
+  """
+  @spec streaming_query_listener_bus_command(:add | :remove) :: command()
+  def streaming_query_listener_bus_command(arm) do
+    command = %Proto.StreamingQueryListenerBusCommand{command: bus_arm(arm)}
+
+    %Proto.Command{command_type: {:streaming_query_listener_bus_command, command}}
+  end
+
+  defp bus_arm(:add), do: {:add_listener_bus_listener, true}
+  defp bus_arm(:remove), do: {:remove_listener_bus_listener, true}
+
+  defp bus_arm(other) do
+    raise ArgumentError, "a listener bus command is :add or :remove, not #{inspect(other)}"
+  end
+
   # A merge's three clauses, and what each one may do. Not a Latu invention: PySpark's
   # `MergeIntoWriter` exposes exactly these methods on each of its three nested builders, and
   # the shape *is* the semantics — a row with no match in the target cannot be updated or

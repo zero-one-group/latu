@@ -69,6 +69,8 @@ defmodule Latu.OptionsTest do
   #     with their own docstrings; this file reads `lib/latu.ex` only.
   #   * `Latu.StreamingQuery`'s waits — `await_termination` and `await_any_termination` validate
   #     `:timeout` and `:interval` through `wait_options!`, and document them on that module.
+  #   * `responses` — `Latu.Client`'s own, whose `:silence` and `:close` are set by the two
+  #     callers inside `lib/` and reachable from no verb at all.
   #   * `new`, `decode`, `subquery`, `aggregate`, `sort_order` — internal builders and
   #     carriers, reached positionally or by a verb of their own.
   @not_a_facade_verb [
@@ -83,6 +85,7 @@ defmodule Latu.OptionsTest do
     :new,
     :sort_order,
     :subquery,
+    :responses,
     :table_exists,
     :wait_options!
   ]

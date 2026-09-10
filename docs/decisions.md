@@ -1543,9 +1543,9 @@ invented.
 
 Two things the probes measured that the docs owe users. A streaming query outlives the client
 that started it, so `stop/1` is load-bearing and a forgotten query has no bound, where the ML
-cache refuses a fit rather than dropping a model. *(The bound is the session; see 2026-09-09.)* And `interrupt_all` does stop streaming
-queries, which makes it the session-wide kill and a hazard for anyone interrupting a batch query
-in a session that also streams.
+cache refuses a fit rather than dropping a model. *(The bound is the session; see 2026-09-09.)*
+And `interrupt_all` does stop streaming queries, which makes it the session-wide kill and a
+hazard for anyone interrupting a batch query in a session that also streams.
 
 Scope, milestones and the open questions are in the project's `latu-streaming-roadmap.md`.
 
@@ -1606,3 +1606,61 @@ and `capture` stops each command before it is sent.
 
 The `:streaming` ExUnit tag holds the processing-time integration tests, excluded by default
 (S-D7); `:available_now` over a bounded file source is the one streaming test in `check.all`.
+
+## 2026-09-10 — The listener bus, and a per-execution silence policy
+
+**`Latu.StreamingQuery.events/1` is a lazy `Stream`, not a registered callback.** PySpark's
+`addListener` takes an object, spawns a thread and calls back on it; Latu has no thread, so the
+events are the return value and the caller decides where they run. `Latu.Progress` set that
+precedent for a batch query. The bus opens on first enumeration and closes when the enumeration
+ends, so a `take_while` and a raise both close it.
+
+**The empty-reattach guard is now per-execution, and this is why.**
+`ExecuteGrpcResponseSender`'s deadline branch is `sentResponsesSize > maximumResponseSize ||
+deadlineTimeNs < System.nanoTime()`, and it calls `onCompleted()` — a clean EOF with no
+`ResultComplete`, on wall clock, whether or not the stream ever sent anything. So an idle
+listener bus takes one empty reattach per `senderMaxStreamDuration`, forever. Against a flat
+`@max_empty_reattaches 100` a perfectly healthy bus died after about eight minutes on the 5s
+reattach server. `await_termination/2` escaped the same ceiling by looping bounded waits; a bus
+cannot, because it is by construction one long `ExecutePlan`.
+
+So `Execution.new/3` takes `silence: :fatal | :expected`. `:fatal` is the default and unchanged:
+the caller asked for something, so a server that never delivers it is misconfigured.
+`:expected` is the bus, where silence is the normal state — **but only after the first
+response**. Before it the bound still applies, and that is the case worth keeping: the server
+answers a second `add_listener_bus_listener` on one session with a log line and nothing on the
+wire, so without it the stream would reattach forever. The refusal names that cause. Raising the
+count or swapping it for a time budget were both considered; each leaves an event channel that
+is legitimately silent forever needing an exemption anyway, and would churn the module for no
+gain.
+
+**Events are emitted, never accumulated.** `streaming_query_listener_events_result` is the one
+`repeated` arm, arriving many times on one `ExecutePlan`. The plan doc feared an accumulating
+field in the state machine; there is no need for one. A batch is already emitted and forgotten,
+with `rows` as a count, and events follow it exactly: `{:emit_events, events}` out, `events` as
+a count. A bus held open for hours holds nothing.
+
+**Closing is a command, so the stream's `after_fun` sends one.** `cleanUp()` only runs from a
+separate `remove_listener_bus_listener` `ExecutePlan`, so releasing the events execution does
+not close the thing it opened. `Client.responses/3` grew a `close:` plan for that, sent
+best-effort and logged like a release, because raising in an `after_fun` would replace the
+caller's own exception. A failure there leaves the bus registered until the session ends, and
+`events/1` says so.
+
+**The bus's own ExecutePlan reports progress, and `events/1` drops it.** `ExecutionProgress` is
+the one response the execution framework injects into any stream rather than the command handler
+sending it, so a bus gets `{:progress, %Latu.Progress{}}` like every other execution — empty,
+because a bus has no stages. Dropped in the stream, as `Latu.stream/2` drops it. It still emits
+`[:latu, :result, :progress]`, which on a long-lived bus is noise a dashboard has to filter by
+`operation_id`; that is the framework's behaviour for any command execution and not worth
+special-casing.
+
+**An event type this client has not met passes through as `:unknown` with its JSON undecoded**,
+rather than raising as PySpark does. Dropping a live bus because a newer server invented a
+fourth type is worse than handing it on, and it is the same choice `take/2`'s catch-all already
+makes for a response arm.
+
+**The bus's integration test is `:streaming`-tagged, out of the gate.** Event *delivery* timing
+is the server's business, and a test that waits on it does not belong in a gate on `main`
+(S-D7's reasoning). What gates the bus is the offline state-machine tests: the ack latch, the
+emit-and-count, and both halves of the silence policy.

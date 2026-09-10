@@ -725,22 +725,33 @@ defmodule Latu.Client do
   # The tagged element stream every consumer folds: `{:schema, data_type}` at most once and
   # always before any batch (the server sends it on a response of its own first, and
   # `handle/2` puts it first even if one ever rode in with a batch), `{:command_result,
-  # relation}` at most once (a SqlCommand answering), `{:ok, batch}` per batch, then exactly
-  # one `{:done, execution}` or `{:error, error}`. Raises at the call site when the session is
-  # not connected, since an enumeration cannot return an error. Internal contract, consumed by
-  # `execute/2` and `Latu.DataFrame.stream/2`.
-  def responses(%Session{channel: nil}, _plan) do
+  # relation}` at most once (a SqlCommand answering), `{:ok, batch}` per batch,
+  # `{:listener_bus, :open}` at most once and `{:events, [event]}` per listener-event response,
+  # then exactly one `{:done, execution}` or `{:error, error}`. Raises at the call site when the
+  # session is not connected, since an enumeration cannot return an error. Internal contract,
+  # consumed by `execute/2`, `Latu.DataFrame.stream/2` and `Latu.StreamingQuery.events/1`.
+  #
+  #   * `:silence` — `Latu.Client.Execution`'s, for a stream that is legitimately idle.
+  #   * `:close` — a `Plan` to send when the stream ends, however it ends. The listener bus
+  #     needs it: only a separate `remove_listener_bus_listener` ExecutePlan ends the events
+  #     stream, so releasing this execution is not enough to close the thing it opened.
+  def responses(session, plan, opts \\ [])
+
+  def responses(%Session{channel: nil}, _plan, _opts) do
     raise not_connected()
   end
 
-  def responses(%Session{} = session, %Proto.Plan{} = plan) do
+  def responses(%Session{} = session, %Proto.Plan{} = plan, opts) do
+    opts = Keyword.validate!(opts, silence: :fatal, close: nil)
+
     Stream.resource(
       fn ->
         # Generated before the first call, not read off a response: a reattach may be needed
         # before anything arrives, and it has to name the operation already in flight.
         state = %{
-          execution: Execution.new(session, UUID.v4()),
+          execution: Execution.new(session, UUID.v4(), silence: opts[:silence]),
           plan: plan,
+          close: opts[:close],
           pull: nil,
           started?: false,
           done?: false,
@@ -807,6 +818,7 @@ defmodule Latu.Client do
     elements =
       elements
       |> latched(:command_result, seen, execution)
+      |> latched(:listener_bus, seen, execution)
       |> progressed(seen, execution)
       |> latched(:schema, seen, execution)
 
@@ -833,6 +845,14 @@ defmodule Latu.Client do
     Telemetry.progress(Progress.percent(progress), ids(execution))
 
     [{:progress, progress} | elements]
+  end
+
+  defp act({:emit_events, events}, state) do
+    for event <- events do
+      Telemetry.listener_event(event.event_type, ids(state.execution))
+    end
+
+    {[{:events, events}], state}
   end
 
   defp act({:emit, batch}, state) do
@@ -967,12 +987,34 @@ defmodule Latu.Client do
   # ExecutePlan measures *opening* the stream; this measures draining it, which is what anyone
   # asking "how long did the query take" means.
   defp finished(state) do
+    close(state)
     release_all(state)
 
     duration = System.monotonic_time() - state.started_at
     metadata = Map.put(ids(state.execution), :outcome, state.outcome)
 
     Telemetry.execution_finished(duration, metadata)
+  end
+
+  # The listener bus is the one stream whose end is a command rather than a release: the server
+  # holds the events observer open until a `remove_listener_bus_listener` arrives on an
+  # ExecutePlan of its own, so halting the consumer would otherwise leave the bus registered and
+  # the next `events/1` on the session answered with silence. Best effort and logged, as a
+  # release is, since raising in an `after_fun` would replace the caller's own exception.
+  defp close(%{close: nil}), do: :ok
+  defp close(%{execution: %{session: %Session{channel: nil}}}), do: :ok
+
+  defp close(%{close: %Proto.Plan{} = plan, execution: %{session: session}}) do
+    case execute_command(session, plan) do
+      {:ok, _executed} ->
+        :ok
+
+      {:error, error} ->
+        Logger.warning(
+          "could not close the streaming listener bus: #{Exception.message(error)}. " <>
+            "It stays registered until the session ends, and events/1 will not open another."
+        )
+    end
   end
 
   # Best effort, and inline: without it the server holds the execution and its response buffer

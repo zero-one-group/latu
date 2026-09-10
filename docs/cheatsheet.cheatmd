@@ -326,3 +326,9 @@ The handle `Latu.write_stream/2` returns, and `spark.streams` — session-first.
 | `await_any_termination/2` | Wait for any query on the session to end. **+ !** |
 | `get/2` | One active query by id, or `nil`. **+ !** |
 | `reset_terminated/1` | Forget the terminated queries `await_any_termination/2` would… **+ !** |
+
+### The listener bus
+
+| | |
+| --- | --- |
+| `events/1` | Every streaming event on the session, as a lazy `Stream`. |

@@ -21,7 +21,8 @@ defmodule Latu.StreamingQuery do
     * **A query outlives its client.** Stop it, or it runs until the session ends; a lost handle
       comes back through `get/2` or `active/1`. `Latu.with_stream/3` stops in an `after`.
     * **Failure is asynchronous.** A query that dies at 3am raises nothing here. Whoever is in
-      `await_termination/2` gets the failure as `{:error, _}`; anyone else asks `exception/1`.
+      `await_termination/2` gets the failure as `{:error, _}`; anyone else asks `exception/1`,
+      or watches `events/1` for a `:terminated`.
     * **`Latu.interrupt/2` with no scope stops streaming queries too.** By tag it reaches the
       ones started under that tag, which is the session-wide kill and a hazard for anyone
       interrupting a batch query in a session that also streams.
@@ -54,6 +55,24 @@ defmodule Latu.StreamingQuery do
 
   @typedoc "One progress report, Spark's JSON with snake-cased keys. See `last_progress/1`."
   @type progress :: %{optional(atom()) => term()}
+
+  @typedoc """
+  Which of Spark's three listener events this is, or `:unknown` for a fourth a newer server
+  invented. See `t:event/0` for what each one carries.
+  """
+  @type event_type :: :progress | :idle | :terminated | :unknown
+
+  @typedoc """
+  One event off the listener bus: `:type` plus Spark's own JSON, snake-cased.
+
+    * `:progress` — carries `:progress`, exactly what `last_progress/1` returns.
+    * `:idle` — `:id`, `:run_id`, `:timestamp`.
+    * `:terminated` — `:id`, `:run_id`, `:exception`, `:error_class_on_exception`.
+    * `:unknown` — a type this client has not met, with `:event_type` and the raw `:json`
+      undecoded. A newer server can add one, and dropping the bus over it would be worse than
+      handing it on.
+  """
+  @type event :: %{required(:type) => event_type(), optional(atom()) => term()}
 
   @typedoc "What `status/1` answers."
   @type status :: %{
@@ -397,6 +416,83 @@ defmodule Latu.StreamingQuery do
   @doc "Like `reset_terminated/1`, raising on failure."
   @spec reset_terminated!(Session.t()) :: :ok
   def reset_terminated!(%Session{} = session), do: unwrap!(reset_terminated(session))
+
+  # =============================================
+  # The listener bus
+  # =============================================
+
+  @doc """
+  Every streaming event on the session, as a lazy `Stream`.
+
+      session
+      |> Latu.StreamingQuery.events()
+      |> Stream.filter(&(&1.type == :progress))
+      |> Enum.take(3)
+
+  PySpark registers a listener object and calls back on a thread it owns; Latu hands you the
+  events and lets you decide where they run, as `Latu.Progress` does for a batch query. Nothing
+  is spawned: the bus opens when the stream is first enumerated, and closes when the
+  enumeration ends, however it ends.
+
+  Each element is a map with a `:type` — see `t:event/0`. A progress event's `:progress` is
+  what `last_progress/1` answers, so `decode_progress/1` is the whole decoder for both.
+
+  Four things to know, all of them the server's doing:
+
+    * **One bus per session.** The server answers a second `add` with a log line and nothing on
+      the wire, so a second `events/1` on the same session hangs until the reattach guard gives
+      up and then names this as the likely cause. Enumerate one bus per session at a time.
+    * **Closing is a command, not a release.** Halting the stream sends
+      `remove_listener_bus_listener`; if that fails it is logged and the bus stays registered
+      for the life of the session. A `Latu.disconnect/2` clears it either way.
+    * **Events are at-least-once.** A reattach replays the responses the server still holds,
+      and neither Latu nor PySpark acknowledges an event, so a duplicate is possible. Match on
+      `:run_id` and `:batch_id` if that matters.
+    * **A silent bus is the normal state**, so this is the one execution in Latu where an idle
+      stream is not eventually an error. Before the first response it still is.
+
+  Raises `Latu.Error` on failure, as `Latu.stream/2` does, since an enumeration has no way to
+  return one.
+  """
+  @spec events(Session.t()) :: Enumerable.t()
+  def events(%Session{} = session) do
+    session
+    |> Client.responses(Plan.new(Plan.streaming_query_listener_bus_command(:add)),
+      silence: :expected,
+      close: Plan.new(Plan.streaming_query_listener_bus_command(:remove))
+    )
+    |> Stream.flat_map(fn
+      {:events, events} -> Enum.map(events, &decode_event/1)
+      {:listener_bus, :open} -> []
+      # The bus's own ExecutePlan reports progress like any other, and on a server with a
+      # short `progress.reportInterval` it does so constantly. That is the *execution's*
+      # progress, not a query's, so it is dropped here as `Latu.stream/2` drops it.
+      {:progress, %Latu.Progress{}} -> []
+      {:done, _execution} -> []
+      {:error, error} -> raise error
+    end)
+  end
+
+  @doc false
+  # Public so the offline tests can pin the three shapes without a server, as
+  # `Latu.DataFrame.write_stream_command/2` is. Not API: `events/1` is.
+  def decode_event(%{event_type: :QUERY_PROGRESS_EVENT, event_json: json}) do
+    decoded(:progress, json)
+  end
+
+  def decode_event(%{event_type: :QUERY_IDLE_EVENT, event_json: json}) do
+    decoded(:idle, json)
+  end
+
+  def decode_event(%{event_type: :QUERY_TERMINATED_EVENT, event_json: json}) do
+    decoded(:terminated, json)
+  end
+
+  def decode_event(%{event_type: type, event_json: json}) do
+    %{type: :unknown, event_type: type, json: json}
+  end
+
+  defp decoded(type, json), do: json |> decode_progress() |> Map.put(:type, type)
 
   # =============================================
   # Waiting
