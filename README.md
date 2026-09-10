@@ -176,14 +176,19 @@ literals rather than splicing text.
 session config both ways, per-action progress callbacks, errors carrying Spark's own error class
 and SQLSTATE, `:telemetry` events, and Livebook rendering behind an optional `:kino`.
 
+**Structured streaming.** `read/2` with `is_streaming: true`, `with_watermark/3`, and
+`write_stream/2` with the `:available_now`, processing-time and continuous triggers, returning a
+`%Latu.StreamingQuery{}` whose verbs are Spark's own: `await_termination`, `status`,
+`last_progress`, `stop`. `with_stream/3` is the bracket, and `events/1` is the listener bus as a
+lazy stream. What is out is `foreachBatch`, which carries a closure no client but Python can
+build.
+
 The [cheatsheet](https://hexdocs.pm/latu/cheatsheet.html) is the whole surface, one line each.
 
 **Elsewhere.** MLlib is [`latu_ml`](https://hexdocs.pm/latu_ml), a companion package. It is a
 surface of its own: a server-side model cache, Spark's on-disk model format, its own operator
-registry, and no reason to share Latu's release cadence. Structured streaming is nobody's yet,
-because a streaming query is a lifecycle Latu declines to own. There are no UDFs written in
-Elixir, no RDDs and no `SparkContext`. Spark Connect offers no client in any language a path to
-them.
+registry, and no reason to share Latu's release cadence. There are no UDFs written in Elixir, no
+RDDs and no `SparkContext`. Spark Connect offers no client in any language a path to them.
 
 ## Custom code on the cluster
 
@@ -214,9 +219,8 @@ would take, is in `docs/decisions.md`.
 ## SparkEx, and why Latu exists
 
 [SparkEx](https://github.com/lukaszsamson/spark_ex) is an independent Elixir Spark Connect
-client. **It got here first, it is on Hex, and it does more than Latu does**: structured streaming,
-and UDF/UDTF registration, neither of which Latu ships. If you need either today,
-use SparkEx.
+client. **It got here first, it is on Hex, and it does one thing Latu does not**: UDF/UDTF
+registration. If you need that today, use SparkEx.
 
 The two made different bets. SparkEx keeps close to PySpark's shape, with mandatory `col/1` and
 `lit/1`, module namespaces standing in for method chains, positional arguments and string keys,

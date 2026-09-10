@@ -9,11 +9,16 @@ defmodule Latu.Client.Execution do
     :session,
     :schema,
     :command_result,
+    :write_stream_operation_start_result,
+    :streaming_query_command_result,
+    :streaming_query_manager_command_result,
+    :listener_bus,
     :checkpointed,
     :metrics,
     :progress,
     observed: %{},
-    rows: 0
+    rows: 0,
+    events: 0
   ]
 end
 
@@ -50,5 +55,5 @@ defmodule Latu.Client do
   def cache_artifacts(session, _blobs), do: {:ok, [], session}
   def add_jar(session, _name, _contents), do: {:ok, session}
   def artifact_requests(_session, _artifacts, _prefix \\ "cache/"), do: []
-  def responses(_session, _plan), do: []
+  def responses(_session, _plan, _opts \\ []), do: []
 end

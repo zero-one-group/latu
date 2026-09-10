@@ -7,7 +7,7 @@ defmodule Latu.TwinsTest do
   # So it is a test rather than a convention, in the shape of `registered/0 == exports` and
   # `function_calls_test.exs`: read the specs off the compiled module, not a list someone
   # remembers to update.
-  @modules [Latu, Latu.DataFrame, Latu.Catalog, Latu.Session]
+  @modules [Latu, Latu.DataFrame, Latu.Catalog, Latu.Session, Latu.StreamingQuery]
 
   # `@doc false` is outside the convention by definition — it says "not API", and the twins are
   # an API promise. That covers `Latu.to_ddl/2`, which has no caller.

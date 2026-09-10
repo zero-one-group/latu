@@ -150,6 +150,7 @@ defmodule Latu.TelemetryTest do
                  rpc: 3,
                  execution_started: 1,
                  execution_finished: 2,
+                 listener_event: 2,
                  attempt: 4,
                  batch: 3,
                  progress: 2

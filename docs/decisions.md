@@ -817,6 +817,8 @@ events stay unbuilt, as `MlCommand` does; the seams both packages need exist sin
 original reasoning — "PySpark manages it with process-owned state" — was corrected at M13.5: the
 streaming core is handle-based RPCs. The conclusion stands on the bracket test there.)*
 
+**Reversed 2026-09-08**, below: the bracket test was wrong, and a probe settled the rest.
+
 ## 2026-09-02 — `disconnect/2` does not release the server session by default
 
 Latu has two verbs where PySpark's `stop()` has one, and keeps them apart on purpose: a clone
@@ -1493,3 +1495,176 @@ how a version matrix silently stops covering anything.
 Gating a *test* on the server version, when one is eventually needed, compares numeric
 components. `"4.10" >= "4.2"` is false as a string and `starts_with?("4.2")` skips silently on
 every later server; the Swift client shipped both and lost its whole `TIME` suite to the second.
+
+## 2026-09-08 — Structured streaming is Latu's, minus the closure-shaped parts
+
+Reverses 2026-09-02, which made it a separate package on the bracket test. The bracket test was
+wrong. `with_stream/3` does exist: `AvailableNow` terminates by itself over a checkpointed
+source, which is incremental ETL rather than a batch query with extra steps, and for a
+processing-time trigger the bracket is start, run the caller's function, stop in `after`, where
+the function decides when it has seen enough.
+
+The rule that survived M13.5 is satisfied rather than bent. A `%Latu.StreamingQuery{}` is
+`%Latu.ML.Model{}`'s shape, a server-side object addressed by an id with commands keyed by it
+and an explicit end, and Latu still defines no GenServer, Agent, Supervisor, Registry or pool
+and declares no application callback module. What stays out is anything that *owns* a query: the
+supervised-query pattern is a cookbook recipe beside the supervised-session one, not a module
+here. Volume decides the rest. The ML split was earned by two extractors, codegen, a registry
+and 111 operators; this is one relation, four commands and about eighteen verbs, and it edits
+`Latu.Plan` and `Latu.Client.Execution` either way.
+
+**Out, on the UDF boundary and not a new one.** `foreachBatch` and `foreach` are
+`StreamingForeachFunction`, a oneof of `PythonUDF` and `ScalarScalaUDF`, so both arms carry a
+serialised object and neither has a name-based route the way a scalar UDF has
+`JavaUDF{class_name}`. Server-side listeners carry `listener_payload` bytes. Client-side
+listeners do not, so the event channel is reachable.
+
+`dev/probe_streaming.py` and `dev/probe_streaming_rejoin.py` settled the semantics before any of
+this was written, and two of the answers are decisions in their own right.
+
+**`await_termination/2` is a loop of bounded server waits, not one unbounded call.** A blocking
+streaming command sends nothing while it waits, and the server ends the stream every
+`senderMaxStreamDuration` with nothing in it: `awaitTermination(17s)` against the 5s reattach
+server cost `ExecutePlan=1 ReattachExecute=3`. So `@max_empty_reattaches` (100) bounds any such
+call at about 8 minutes there and 200 on the 2m default, and fails a healthy query with a
+`:protocol` error. Loosening that guard is the wrong fix, since it exists to catch a server no
+sender can make progress on. Sending `awaitTermination(interval_ms)` until it answers true keeps
+Spark's own semantics and never lets one `ExecutePlan` idle past the interval.
+`process_all_available/1` is the same shape, and is documented as a bounded-source verb because
+it never returns on an unbounded one.
+
+**Progress and status decode into snake-cased maps, not structs.** The JSON Spark puts on the
+Connect wire is lossy against the driver-side report: no top-level `numInputRows`,
+`inputRowsPerSecond` or `processedRowsPerSecond`, and `sources[].startOffset` as a string where
+the server's own `ProgressReporter` log writes a number. PySpark's nulls are faithful to what
+arrives. A typed struct is how those fields went missing in the first place, `startOffset` is
+polymorphic across sources, and the aggregates are summed from `sources` or omitted rather than
+invented.
+
+Two things the probes measured that the docs owe users. A streaming query outlives the client
+that started it, so `stop/1` is load-bearing and a forgotten query has no bound, where the ML
+cache refuses a fit rather than dropping a model. *(The bound is the session; see 2026-09-09.)*
+And `interrupt_all` does stop streaming queries, which makes it the session-wide kill and a
+hazard for anyone interrupting a batch query in a session that also streams.
+
+Scope, milestones and the open questions are in the project's `latu-streaming-roadmap.md`.
+
+## 2026-09-09 — Streaming S1: what the code settled
+
+The roadmap's recommendations, confirmed or corrected by the code and by reading the 4.2.0
+server (`SparkConnectPlanner`, `SparkConnectStreamingQueryCache`, `SessionHolder`).
+
+**The manager verbs live on `Latu.StreamingQuery`, session-first**: `active/1`, `get/2`,
+`await_any_termination/2`, `reset_terminated/1`, under Spark's own names, as `spark.catalog` is
+`Latu.Catalog`. Not `Latu.active_streams/1`: the facade's verbs take a frame, and a module that
+holds the handle's verbs is where someone looks for the ones that find a handle.
+
+**`is_streaming:` is a reserved key on both `read/2` and `table/3`.** It is `Read`'s field, not
+the data source's, so `readStream.table` needs it as much as `readStream.load` does. `table/3`
+gained a validated option list to carry it; a map of options still passes verbatim.
+
+**`within_watermark:` is an option on `distinct/3`**, not a second verb. `Deduplicate` is one
+message with one flag, and `checkpoint/2`'s `local:` is the precedent. Options in the columns'
+place are refused by name.
+
+**A failed query reaches the caller two ways, and the docs say which.** The server's
+`awaitTermination` rethrows the query's `StreamingQueryException`, so `await_termination/2`
+returns it as `{:error, %Latu.Error{}}` from the RPC. `exception/1` is the poll for a query
+nobody waits on, and answers with a new kind, `:query`, carrying the class and stack trace from
+the `ExceptionResult`. Same failure, two arrivals; the kind says which route it took.
+
+**A forgotten query is bounded by its session, not by nothing.** The roadmap read the probe as
+"no bound": a query outlived two dead clients for 958 batches. It outlived them because the
+rejoin probe reused the session id. `SessionHolder.close` stops every query the session
+started, so `Latu.disconnect(session, release: true)` and the server's idle session timeout are
+the bounds; `interrupt_all` is the same call with `blocking = false`. A *stopped* query stays
+addressable for one hour of inactivity (`stoppedQueryInactivityTimeout`, not a conf), each
+command renewing it, then answers `CONNECT_INVALID_PLAN.STREAMING_QUERY_NOT_FOUND`. The cache
+is keyed by id and run id, so a stale run id on a running query is
+`STREAMING_QUERY_RUN_ID_MISMATCH` and on a stopped one is `NOT_FOUND`.
+
+**`explain/2` takes `mode: :simple | :extended`**, the frame verb's spelling over PySpark's
+`extended=True`, so the two read alike; a refusal names the two.
+
+**`:once` is offered, `:real_time` is not.** `Trigger.Once` is deprecated upstream but the wire
+carries it and PySpark sends it. `realTime` is 4.2-only and an older server drops the field in
+silence; it waits on `docs/spark-versions.md`, which is where that risk gets a name.
+
+**`write_stream/2` does not refuse an observed plan** the way `write/2` does: a streaming
+query's observed metrics ride in every progress report under `:observed_metrics`, so nothing is
+discarded.
+
+**Progress keys under `startOffset`, `endOffset`, `latestOffset` and `observedMetrics` stay as
+Spark wrote them.** The first three are polymorphic across sources; the last is keyed by the
+caller's own names, which snake-casing would mangle. Everything else snake-cases into atoms,
+and Spark's key set is small enough that the atoms are bounded.
+
+**The oracle grew `capture`**, `latu_ml`'s interception, because `DataStreamWriter.start` and
+every `StreamingQuery` verb build and send in one method with no `_write` to finish by hand.
+`StreamingQuery(spark, "q-1", "r-1")` is a client object over ids the server has never seen,
+and `capture` stops each command before it is sent.
+
+The `:streaming` ExUnit tag holds the processing-time integration tests, excluded by default
+(S-D7); `:available_now` over a bounded file source is the one streaming test in `check.all`.
+
+## 2026-09-10 — The listener bus, and a per-execution silence policy
+
+**`Latu.StreamingQuery.events/1` is a lazy `Stream`, not a registered callback.** PySpark's
+`addListener` takes an object, spawns a thread and calls back on it; Latu has no thread, so the
+events are the return value and the caller decides where they run. `Latu.Progress` set that
+precedent for a batch query. The bus opens on first enumeration and closes when the enumeration
+ends, so a `take_while` and a raise both close it.
+
+**The empty-reattach guard is now per-execution, and this is why.**
+`ExecuteGrpcResponseSender`'s deadline branch is `sentResponsesSize > maximumResponseSize ||
+deadlineTimeNs < System.nanoTime()`, and it calls `onCompleted()` — a clean EOF with no
+`ResultComplete`, on wall clock, whether or not the stream ever sent anything. So an idle
+listener bus takes one empty reattach per `senderMaxStreamDuration`, forever. Against a flat
+`@max_empty_reattaches 100` a perfectly healthy bus died after about eight minutes on the 5s
+reattach server. `await_termination/2` escaped the same ceiling by looping bounded waits; a bus
+cannot, because it is by construction one long `ExecutePlan`.
+
+So `Execution.new/3` takes `silence: :fatal | :expected`. `:fatal` is the default and unchanged:
+the caller asked for something, so a server that never delivers it is misconfigured.
+`:expected` is the bus, where silence is the normal state — **but only after the first
+response**. Before it the bound still applies, and that is the case worth keeping: the server
+answers a second `add_listener_bus_listener` on one session with a log line and nothing on the
+wire, so without it the stream would reattach forever. The refusal names that cause. Raising the
+count or swapping it for a time budget were both considered; each leaves an event channel that
+is legitimately silent forever needing an exemption anyway, and would churn the module for no
+gain.
+
+**Events are emitted, never accumulated.** `streaming_query_listener_events_result` is the one
+`repeated` arm, arriving many times on one `ExecutePlan`. The plan doc feared an accumulating
+field in the state machine; there is no need for one. A batch is already emitted and forgotten,
+with `rows` as a count, and events follow it exactly: `{:emit_events, events}` out, `events` as
+a count. A bus held open for hours holds nothing.
+
+**Closing is a command, so the stream's `after_fun` sends one.** `cleanUp()` only runs from a
+separate `remove_listener_bus_listener` `ExecutePlan`, so releasing the events execution does
+not close the thing it opened. `Client.responses/3` grew a `close:` plan for that, sent
+best-effort and logged like a release, because raising in an `after_fun` would replace the
+caller's own exception. A failure there leaves the bus registered until the session ends, and
+`events/1` says so.
+
+**The bus's own ExecutePlan reports progress, and `events/1` drops it.** `ExecutionProgress` is
+the one response the execution framework injects into any stream rather than the command handler
+sending it, so a bus gets `{:progress, %Latu.Progress{}}` like every other execution — empty,
+because a bus has no stages. Dropped in the stream, as `Latu.stream/2` drops it.
+
+The server sends one of these per `progress.reportInterval` for the life of the stream, and
+`enqueueProgressMessage(force = true)` bypasses its own dirty check, so on the compose server
+that is every 100 ms forever. It costs nothing: `Client.progressed/2` compares the proto by
+value and only emits when it changes, so an always-empty report yields **one** element and
+**one** `[:latu, :result, :progress]` event for the whole bus. The dedupe that exists for
+replayed reattach responses is what makes a long-lived silent stream free.
+
+**An event type this client has not met passes through as `:unknown` with its JSON undecoded**,
+rather than raising as PySpark does. Dropping a live bus because a newer server invented a
+fourth type is worse than handing it on, and it is the same choice `take/2`'s catch-all already
+makes for a response arm.
+
+**The bus's integration test is `:streaming`-tagged, out of the gate.** Event *delivery* timing
+is the server's business, and a test that waits on it does not belong in a gate on `main`
+(S-D7's reasoning). What gates the bus is the offline state-machine tests: the ack latch, the
+emit-and-count, and both halves of the silence policy.

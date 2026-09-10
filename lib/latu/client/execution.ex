@@ -30,11 +30,17 @@ defmodule Latu.Client.Execution do
     :schema,
     :command_result,
     :ml_command_result,
+    :write_stream_operation_start_result,
+    :streaming_query_command_result,
+    :streaming_query_manager_command_result,
+    :listener_bus,
     :checkpointed,
     :metrics,
     :progress,
+    silence: :fatal,
     observed: %{},
     rows: 0,
+    events: 0,
     complete?: false,
     empty: 0,
     retries: 0
@@ -55,18 +61,36 @@ defmodule Latu.Client.Execution do
           start_offset: non_neg_integer() | nil
         }
 
+  @typedoc """
+  Whether a stream that sends nothing is a broken server or the normal state.
+
+  `:fatal` for a result or a command: the caller asked for something, so a server that never
+  delivers it is misconfigured and `@max_empty_reattaches` empty streams say so. `:expected`
+  for the streaming listener bus, which is silent whenever no query is doing anything and must
+  stay open for hours — there, silence is only fatal *before the first response*, which is what
+  still catches a server that never answers at all. See `Latu.StreamingQuery.events/1`.
+  """
+  @type silence :: :fatal | :expected
+
   @type t :: %__MODULE__{
           session: Session.t(),
           operation_id: String.t(),
           last_response_id: String.t() | nil,
+          silence: silence(),
           schema: Proto.DataType.t() | nil,
           command_result: Proto.Relation.t() | nil,
           ml_command_result: Proto.MlCommandResult.t() | nil,
+          write_stream_operation_start_result: Proto.WriteStreamOperationStartResult.t() | nil,
+          streaming_query_command_result: Proto.StreamingQueryCommandResult.t() | nil,
+          streaming_query_manager_command_result:
+            Proto.StreamingQueryManagerCommandResult.t() | nil,
+          listener_bus: :open | nil,
           checkpointed: String.t() | nil,
           metrics: Proto.ExecutePlanResponse.Metrics.t() | nil,
           progress: Proto.ExecutePlanResponse.ExecutionProgress.t() | nil,
           observed: %{optional(String.t()) => observed()},
           rows: non_neg_integer(),
+          events: non_neg_integer(),
           complete?: boolean(),
           empty: non_neg_integer(),
           retries: non_neg_integer()
@@ -75,19 +99,42 @@ defmodule Latu.Client.Execution do
   @typedoc "What the transport saw."
   @type event :: {:response, Proto.ExecutePlanResponse.t()} | :eof | {:error, Error.t()}
 
+  # `event/0` above is the transport's. A streaming query's own events are a different thing
+  # entirely, so they keep the protocol's full name rather than shadowing it.
+  @typedoc "One streaming listener event, as the server sent it: JSON plus a type enum."
+  @type listener_event :: Proto.StreamingQueryListenerEvent.t()
+
   @typedoc "What the transport should do about it."
   @type action ::
           {:emit, batch()}
+          | {:emit_events, [listener_event()]}
           | :pull
           | {:reattach, non_neg_integer()}
           | {:restart, non_neg_integer()}
           | {:done, t()}
           | {:fail, Error.t()}
 
-  @doc "`operation_id` is the caller's, generated before the first call — see `Latu.Client`."
-  @spec new(Session.t(), String.t()) :: t()
-  def new(%Session{} = session, operation_id) when is_binary(operation_id) do
-    %__MODULE__{session: session, operation_id: operation_id}
+  @doc """
+  `operation_id` is the caller's, generated before the first call — see `Latu.Client`.
+
+  `:silence` says whether a stream that delivers nothing is a broken server. Defaults to
+  `:fatal`; see `t:silence/0`.
+  """
+  @spec new(Session.t(), String.t(), keyword()) :: t()
+  def new(%Session{} = session, operation_id, opts \\ []) when is_binary(operation_id) do
+    opts = Keyword.validate!(opts, silence: :fatal)
+
+    %__MODULE__{
+      session: session,
+      operation_id: operation_id,
+      silence: silence!(opts[:silence])
+    }
+  end
+
+  defp silence!(silence) when silence in [:fatal, :expected], do: silence
+
+  defp silence!(silence) do
+    raise ArgumentError, ":silence is :fatal or :expected, not #{inspect(silence)}"
   end
 
   @doc "Fold one event in and say what to do next."
@@ -117,17 +164,12 @@ defmodule Latu.Client.Execution do
     {{:done, execution}, execution}
   end
 
-  def step(%__MODULE__{empty: empty} = execution, :eof) when empty >= @max_empty_reattaches do
-    {{:fail,
-      Error.new(
-        :protocol,
-        "the server ended #{empty} response streams in a row without sending anything; " <>
-          "senderMaxStreamDuration is likely too short for it to make progress"
-      )}, execution}
-  end
-
   def step(%__MODULE__{} = execution, :eof) do
-    {{:reattach, 0}, %{execution | empty: execution.empty + 1}}
+    if silent_too_long?(execution) do
+      {{:fail, went_quiet(execution)}, execution}
+    else
+      {{:reattach, 0}, %{execution | empty: execution.empty + 1}}
+    end
   end
 
   def step(%__MODULE__{retries: retries} = execution, {:error, %Error{} = error}) do
@@ -153,6 +195,40 @@ defmodule Latu.Client.Execution do
       true ->
         {{:fail, give_up(execution, error)}, execution}
     end
+  end
+
+  # =============================================
+  # Silence
+  # =============================================
+
+  # An `:expected` execution is the listener bus, which is silent whenever no query is doing
+  # anything and has to stay open for hours — so `@max_empty_reattaches` cannot apply to it
+  # once it is running. Before the first response it still does, and that is the case worth
+  # keeping: a redundant `add_listener_bus_listener` is answered by the server with a log line
+  # and nothing on the wire, so without this bound the stream would reattach forever.
+  defp silent_too_long?(%__MODULE__{silence: :expected, last_response_id: nil} = execution) do
+    execution.empty >= @max_empty_reattaches
+  end
+
+  defp silent_too_long?(%__MODULE__{silence: :expected}), do: false
+
+  defp silent_too_long?(%__MODULE__{empty: empty}), do: empty >= @max_empty_reattaches
+
+  defp went_quiet(%__MODULE__{silence: :expected, empty: empty}) do
+    Error.new(
+      :protocol,
+      "the server ended #{empty} response streams in a row without ever answering; a " <>
+        "listener bus is not open until the server acknowledges it, and it answers a second " <>
+        "one on the same session with silence — check whether this session already has one"
+    )
+  end
+
+  defp went_quiet(%__MODULE__{empty: empty}) do
+    Error.new(
+      :protocol,
+      "the server ended #{empty} response streams in a row without sending anything; " <>
+        "senderMaxStreamDuration is likely too short for it to make progress"
+    )
   end
 
   # =============================================
@@ -298,8 +374,62 @@ defmodule Latu.Client.Execution do
     {:pull, %{execution | ml_command_result: result}}
   end
 
+  # The three streaming commands each answer once, and are latched as the ML result is: first
+  # one wins, the whole message, opaque. Unlike the ML arm none is guarded on a set `result_type`,
+  # because for these an empty message *is* an answer — `stop` and `reset_terminated` carry no
+  # payload, `exception` with nothing to report sets no arm, and `get_query` on an unknown id
+  # sets none either. `Latu.StreamingQuery` is what interprets them.
+  defp take(
+         %__MODULE__{write_stream_operation_start_result: nil} = execution,
+         {:write_stream_operation_start_result, result}
+       ) do
+    {:pull, %{execution | write_stream_operation_start_result: result}}
+  end
+
+  defp take(
+         %__MODULE__{streaming_query_command_result: nil} = execution,
+         {:streaming_query_command_result, result}
+       ) do
+    {:pull, %{execution | streaming_query_command_result: result}}
+  end
+
+  defp take(
+         %__MODULE__{streaming_query_manager_command_result: nil} = execution,
+         {:streaming_query_manager_command_result, result}
+       ) do
+    {:pull, %{execution | streaming_query_manager_command_result: result}}
+  end
+
+  # The listener bus, and the one arm that arrives many times on one ExecutePlan. It is NOT
+  # latched: events are emitted and forgotten, exactly as a batch is, so a channel held open for
+  # hours holds nothing. `events` is a count for the same reason `rows` is. The bus's opening
+  # ack is a separate response and rides the latch, so `Latu.Client` sees it as one element.
+  #
+  # A replayed response after a reattach would re-emit its events. The server's own client has
+  # the same property — it acknowledges nothing and asks for no offsets — so an event is
+  # at-least-once and the docs say so rather than pretending otherwise.
+  defp take(%__MODULE__{} = execution, {:streaming_query_listener_events_result, result}) do
+    execution = open_bus(execution, result.listener_bus_listener_added)
+
+    case result.events do
+      [] ->
+        {:pull, execution}
+
+      events ->
+        {{:emit_events, events}, %{execution | events: execution.events + length(events)}}
+    end
+  end
+
   # `schema`, `metrics` and `observed_metrics` sit outside the `response_type` oneof and are
   # handled in `step/2`, so a response may set no arm at all. The server will also grow arms
   # Latu has not met. Skip what we do not handle rather than rejecting it.
   defp take(execution, _response_type), do: {:pull, execution}
+
+  # Below the last `take/2` clause on purpose: a helper between them would split the run, and
+  # Elixir fails the build on non-contiguous clauses of one name.
+  defp open_bus(%__MODULE__{listener_bus: nil} = execution, true) do
+    %{execution | listener_bus: :open}
+  end
+
+  defp open_bus(execution, _added), do: execution
 end

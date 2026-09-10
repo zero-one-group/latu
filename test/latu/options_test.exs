@@ -26,6 +26,7 @@ defmodule Latu.OptionsTest do
     as_of_join: :join_as_of,
     join_type: :join,
     save_mode: :write,
+    output_mode: :write_stream,
     nearest_direction!: :nearest_by_join,
     analyze: :explain,
     lateral_join: :lateral_join,
@@ -52,6 +53,8 @@ defmodule Latu.OptionsTest do
     write_command: [:write],
     save_as_table_command: [:save_as_table],
     write_v2_command: [:write_v2],
+    write_stream_command: [:write_stream, :with_stream],
+    deduplicate: [:distinct],
     interrupt_scope: [:interrupt],
     quantiles: [:approx_quantile],
     set_op: [:union, :intersect, :except],
@@ -64,6 +67,10 @@ defmodule Latu.OptionsTest do
   #
   #   * `Latu.Catalog`'s verbs — `list_tables`, `drop_table` and the rest live on that module
   #     with their own docstrings; this file reads `lib/latu.ex` only.
+  #   * `Latu.StreamingQuery`'s waits — `await_termination` and `await_any_termination` validate
+  #     `:timeout` and `:interval` through `wait_options!`, and document them on that module.
+  #   * `responses` — `Latu.Client`'s own, whose `:silence` and `:close` are set by the two
+  #     callers inside `lib/` and reachable from no verb at all.
   #   * `new`, `decode`, `subquery`, `aggregate`, `sort_order` — internal builders and
   #     carriers, reached positionally or by a verb of their own.
   @not_a_facade_verb [
@@ -78,7 +85,9 @@ defmodule Latu.OptionsTest do
     :new,
     :sort_order,
     :subquery,
-    :table_exists
+    :responses,
+    :table_exists,
+    :wait_options!
   ]
 
   # Closed sets that no facade option reaches: their value arrives positionally, from a verb of
@@ -130,7 +139,9 @@ defmodule Latu.OptionsTest do
   @unreachable_by_split %{
     read: [:options],
     save_as_table: [:options, :path, :table],
+    table: [:options],
     write: [:options, :table],
+    write_stream: [:options],
     write_v2: [:options]
   }
 

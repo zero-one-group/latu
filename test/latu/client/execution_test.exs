@@ -5,6 +5,11 @@ defmodule Latu.Client.ExecutionTest do
   alias Latu.Error
   alias Latu.Protocol.Spark.Connect.ExecutePlanResponse, as: Response
   alias Latu.Protocol.Spark.Connect.MlCommandResult
+  alias Latu.Protocol.Spark.Connect.StreamingQueryCommandResult
+  alias Latu.Protocol.Spark.Connect.StreamingQueryListenerEvent
+  alias Latu.Protocol.Spark.Connect.StreamingQueryListenerEventsResult
+  alias Latu.Protocol.Spark.Connect.StreamingQueryManagerCommandResult
+  alias Latu.Protocol.Spark.Connect.WriteStreamOperationStartResult
   alias Latu.Session
 
   @operation "op-1"
@@ -166,6 +171,150 @@ defmodule Latu.Client.ExecutionTest do
     test "a result with no arm set latches nothing", %{session: session, execution: ex} do
       assert {:pull, ex} = Execution.step(ex, {:response, ml_result(session, nil)})
       assert ex.ml_command_result == nil
+    end
+  end
+
+  # Opaque cargo again: atoms stand in for the payloads, and the three arms differ from the ML
+  # one in latching a result with *no* arm set, because for these that is an answer.
+  describe "the streaming results" do
+    test "a started query is latched, first one wins", %{session: session, execution: ex} do
+      assert ex.write_stream_operation_start_result == nil
+
+      {:pull, ex} = Execution.step(ex, {:response, stream_started(session, :first)})
+      assert ex.write_stream_operation_start_result.query_id == :first
+
+      {:pull, ex} = Execution.step(ex, {:response, stream_started(session, :replayed)})
+      assert ex.write_stream_operation_start_result.query_id == :first
+    end
+
+    test "a query command's result is latched, first one wins", %{session: s, execution: ex} do
+      assert ex.streaming_query_command_result == nil
+
+      {:pull, ex} = Execution.step(ex, {:response, query_result(s, {:status, :a_status})})
+      assert ex.streaming_query_command_result.result_type == {:status, :a_status}
+
+      {:pull, ex} = Execution.step(ex, {:response, query_result(s, {:status, :another})})
+      assert ex.streaming_query_command_result.result_type == {:status, :a_status}
+    end
+
+    test "a query command answered with no arm is an answer too", %{session: s, execution: ex} do
+      {:pull, ex} = Execution.step(ex, {:response, query_result(s, nil)})
+
+      assert %StreamingQueryCommandResult{result_type: nil} = ex.streaming_query_command_result
+    end
+
+    test "a manager command's result is latched, first one wins", %{session: s, execution: ex} do
+      assert ex.streaming_query_manager_command_result == nil
+
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(s, {:active, :these})})
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :these}
+
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(s, {:active, :those})})
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :these}
+
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(s, nil)})
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :these}
+    end
+
+    test "the three do not clobber one another", %{session: session, execution: ex} do
+      {:pull, ex} = Execution.step(ex, {:response, stream_started(session, :q)})
+      {:pull, ex} = Execution.step(ex, {:response, query_result(session, {:status, :s})})
+      {:pull, ex} = Execution.step(ex, {:response, manager_result(session, {:active, :a})})
+
+      assert ex.write_stream_operation_start_result.query_id == :q
+      assert ex.streaming_query_command_result.result_type == {:status, :s}
+      assert ex.streaming_query_manager_command_result.result_type == {:active, :a}
+      assert ex.ml_command_result == nil
+    end
+  end
+
+  # The guard exists to catch a server no sender can make progress on. A listener bus is silent
+  # whenever no query is doing anything, so for that one execution silence is the normal state —
+  # but only once the server has answered at all, which is what still catches a redundant
+  # `add_listener_bus_listener`, answered with a log line and nothing on the wire.
+  describe "a stream that is legitimately silent" do
+    test "is given up on like any other before the first response", %{session: session} do
+      bus = Execution.new(session, @operation, silence: :expected)
+      empty = Enum.reduce(1..100, bus, fn _, ex -> elem(Execution.step(ex, :eof), 1) end)
+
+      assert {{:fail, %Error{kind: :protocol, message: message}}, _} = Execution.step(empty, :eof)
+      assert message =~ "without ever answering"
+      assert message =~ "already has one"
+    end
+
+    test "and never after one, however long it stays quiet", %{session: session} do
+      bus = Execution.new(session, @operation, silence: :expected)
+      {:pull, bus} = step(bus, session, bus_opened(), id: "r-1")
+
+      quiet = Enum.reduce(1..500, bus, fn _, ex -> elem(Execution.step(ex, :eof), 1) end)
+
+      assert {{:reattach, 0}, _} = Execution.step(quiet, :eof)
+    end
+
+    test "a :fatal execution is unaffected by the option existing", %{session: session} do
+      ex = Execution.new(session, @operation)
+      assert ex.silence == :fatal
+
+      {{:emit, _}, ex} = step(ex, session, batch(1, 0, "A"), id: "r-1")
+      empty = Enum.reduce(1..100, ex, fn _, ex -> elem(Execution.step(ex, :eof), 1) end)
+
+      assert {{:fail, %Error{message: message}}, _} = Execution.step(empty, :eof)
+      assert message =~ "senderMaxStreamDuration"
+    end
+
+    test "an unknown silence is refused by name", %{session: session} do
+      assert_raise ArgumentError, ~r/:fatal or :expected/, fn ->
+        apply(Execution, :new, [session, @operation, [silence: :whatever]])
+      end
+    end
+  end
+
+  # The one arm that arrives many times on one ExecutePlan. Emitted rather than latched, as a
+  # batch is, so a bus held open for hours holds nothing: `events` is a count, like `rows`.
+  describe "the listener bus" do
+    test "the opening ack is latched, first one wins", %{session: session, execution: ex} do
+      assert ex.listener_bus == nil
+
+      {:pull, ex} = step(ex, session, bus_opened())
+      assert ex.listener_bus == :open
+
+      {:pull, ex} = step(ex, session, bus_opened())
+      assert ex.listener_bus == :open
+      assert ex.events == 0
+    end
+
+    test "events are emitted and counted, never held", %{session: session, execution: ex} do
+      assert {{:emit_events, [one, two]}, ex} =
+               step(ex, session, bus_events([:QUERY_IDLE_EVENT, :QUERY_PROGRESS_EVENT]))
+
+      assert one.event_type == :QUERY_IDLE_EVENT
+      assert two.event_type == :QUERY_PROGRESS_EVENT
+      assert ex.events == 2
+
+      assert {{:emit_events, [_]}, ex} = step(ex, session, bus_events([:QUERY_TERMINATED_EVENT]))
+      assert ex.events == 3
+
+      # The struct carries a count and nothing else — nothing to grow over hours.
+      refute Map.has_key?(ex, :listener_events)
+    end
+
+    test "a response carrying the ack and events does both", %{session: session, execution: ex} do
+      result = %StreamingQueryListenerEventsResult{
+        listener_bus_listener_added: true,
+        events: [%StreamingQueryListenerEvent{event_type: :QUERY_IDLE_EVENT, event_json: "{}"}]
+      }
+
+      assert {{:emit_events, [_one]}, ex} =
+               step(ex, session, {:streaming_query_listener_events_result, result})
+
+      assert ex.listener_bus == :open
+      assert ex.events == 1
+    end
+
+    test "one with neither only asks for the next", %{session: s, execution: ex} do
+      assert {:pull, ex} = step(ex, s, bus_events([]))
+      assert ex.events == 0
+      assert ex.listener_bus == nil
     end
   end
 
@@ -361,6 +510,46 @@ defmodule Latu.Client.ExecutionTest do
       session_id: session.session_id,
       response_type: {:ml_command_result, %MlCommandResult{result_type: result_type}}
     }
+  end
+
+  defp stream_started(session, query_id) do
+    %Response{
+      session_id: session.session_id,
+      response_type:
+        {:write_stream_operation_start_result,
+         %WriteStreamOperationStartResult{query_id: query_id}}
+    }
+  end
+
+  defp query_result(session, result_type) do
+    %Response{
+      session_id: session.session_id,
+      response_type:
+        {:streaming_query_command_result, %StreamingQueryCommandResult{result_type: result_type}}
+    }
+  end
+
+  defp manager_result(session, result_type) do
+    %Response{
+      session_id: session.session_id,
+      response_type:
+        {:streaming_query_manager_command_result,
+         %StreamingQueryManagerCommandResult{result_type: result_type}}
+    }
+  end
+
+  defp bus_opened do
+    {:streaming_query_listener_events_result,
+     %StreamingQueryListenerEventsResult{listener_bus_listener_added: true}}
+  end
+
+  defp bus_events(types) do
+    events =
+      for type <- types do
+        %StreamingQueryListenerEvent{event_type: type, event_json: "{}"}
+      end
+
+    {:streaming_query_listener_events_result, %StreamingQueryListenerEventsResult{events: events}}
   end
 
   defp unavailable, do: grpc_error(14, "UNAVAILABLE: connection reset")

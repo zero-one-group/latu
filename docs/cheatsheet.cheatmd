@@ -59,7 +59,7 @@ Called qualified, the way `Enum` is.
 | `count/2` | Rows per group (lazy), or how many rows there are (an action). **+ !** |
 | `cross_join/2` | Every pairing of the two frames: `join/3` with `how: :cross` and no… |
 | `cube/2` | Group by every combination of these columns. |
-| `distinct/2` | Drop duplicate rows, by these columns or by all of them. |
+| `distinct/3` | Drop duplicate rows, by these columns or by all of them. |
 | `drop/2` | Remove columns. |
 | `except/3` | Rows in the first and not the second, distinct unless `all: true`. |
 | `exists/1` | A predicate that holds when this DataFrame has any rows. |
@@ -106,6 +106,7 @@ Called qualified, the way `Enum` is.
 | `with_checkpoint/3` | Checkpoint, run your function over the result, and free it on… **+ !** |
 | `with_columns/2` | Add or replace columns, keeping the rest. |
 | `with_metadata/3` | Attach metadata to an existing column. |
+| `with_watermark/3` | Mark a streaming frame's event-time column, and how late a row may… |
 | `zip_with_index/2` | Add a column of consecutive indices, starting at 0. |
 
 ### Actions
@@ -164,7 +165,9 @@ Called qualified, the way `Enum` is.
 | `to_nx/2` | The result as `Nx` tensors, one per column. **+ !** |
 | `tree_string/2` | The schema tree as a string, where `print_schema/2` prints it. **+ !** |
 | `unpersist/2` | Drop the server's cache of this frame, and hand it back. **+ !** |
+| `with_stream/3` | Start a streaming write, run your function over the query, and stop… **+ !** |
 | `write/2` | Write to a path. **+ !** |
+| `write_stream/2` | Start a streaming write. **+ !** |
 | `write_v2/3` | Write to a table through Spark's v2 API (`df.writeTo` in PySpark). **+ !** |
 | `write_v2_with_metrics/3` | `write_v2/3`, and the metrics `observe/3` asked for. **+ !** |
 | `write_with_metrics/2` | `write/2`, and the metrics `observe/3` asked for. **+ !** |
@@ -289,3 +292,43 @@ Databases, tables and views — `spark.catalog` in PySpark.
 | `clear_cache/1` | Drop every cached table. **+ !** |
 | `is_cached/2` | Whether the table is cached. **+ !** |
 | `uncache_table/2` | Drop the table from the cache. **+ !** |
+
+## Streaming queries
+
+The handle `Latu.write_stream/2` returns, and `spark.streams` — session-first.
+
+### Status
+
+| | |
+| --- | --- |
+| `decode_progress/1` | Decode one progress report from the JSON the server sends, as… |
+| `exception/1` | Why the query stopped, if it failed: `{:ok, nil}` while it runs or… **+ !** |
+| `explain/2` | Print the query's physical plan, as `Latu.explain/2` does for a frame. **+ !** |
+| `explain_string/2` | The query's physical plan as a string, where `explain/2` prints… **+ !** |
+| `is_active/1` | Whether the query is still running. **+ !** |
+| `last_progress/1` | The most recent progress report, or `nil` before the first batch. **+ !** |
+| `recent_progress/1` | The recent progress reports, oldest first, as `last_progress/1`… **+ !** |
+| `status/1` | The query's status: its message, whether data is waiting, whether a… **+ !** |
+
+### Control
+
+| | |
+| --- | --- |
+| `await_termination/2` | Wait for the query to end. **+ !** |
+| `process_all_available/1` | Block until every row the source has now has been… **+ !** |
+| `stop/1` | Stop the query. **+ !** |
+
+### The session's queries
+
+| | |
+| --- | --- |
+| `active/1` | Every query running on the session, started by this client or not. **+ !** |
+| `await_any_termination/2` | Wait for any query on the session to end. **+ !** |
+| `get/2` | One active query by id, or `nil`. **+ !** |
+| `reset_terminated/1` | Forget the terminated queries `await_any_termination/2` would… **+ !** |
+
+### The listener bus
+
+| | |
+| --- | --- |
+| `events/1` | Every streaming event on the session, as a lazy `Stream`. |

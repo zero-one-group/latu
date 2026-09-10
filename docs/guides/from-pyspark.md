@@ -171,9 +171,10 @@ lost to a rung above it. `docs/decisions.md` has the arguments.
 
 ## Things that are deliberately not here
 
-MLlib is [`latu_ml`](https://hexdocs.pm/latu_ml), a companion package on Hex. Structured
-streaming is nobody's yet. UDFs in Elixir, RDDs and `SparkContext` are out of reach for every
-Spark Connect client, in any language. [`usage-rules.md`](../../usage-rules.md) has the rest.
+MLlib is [`latu_ml`](https://hexdocs.pm/latu_ml), a companion package on Hex. Streaming's
+`foreach` and `foreachBatch` carry a closure only a Python client can build. UDFs in Elixir, RDDs
+and `SparkContext` are out of reach for every Spark Connect client, in any language.
+[`usage-rules.md`](../../usage-rules.md) has the rest.
 
 ## Where to go next
 

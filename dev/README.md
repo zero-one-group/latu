@@ -76,7 +76,11 @@ terminal methods minus the execution, since writes, SQL, views and merges are *C
 `catalog_plan`/`node_plan` for a LogicalPlan whose DataFrame method executes rather than
 returns (catalog operations, `cov`, `corr`, `approxQuantile`); and `analyze_arm(method, df,
 **kwargs)`, `_analyze`'s branch minus the RPC — an analyze fixture is the request arm
-submessage, not a `Plan`, and its golden test is `assert_wire_message/2`.
+submessage, not a `Plan`, and its golden test is `assert_wire_message/2`. For a terminal method
+that builds and sends in one go with nothing to finish by hand (`writeStream.start()`, every
+`StreamingQuery` verb), `capture(lambda: ...)` runs PySpark's own method and takes the Command
+off `execute_command` before it is sent; `query()` is a `StreamingQuery` over ids the server has
+never seen, for exactly that.
 
 Run `--generate` twice and expect an empty diff: a fixture that changes between runs is a coin
 flip, not a golden test. `python dev/fixture_coverage.py` (`--uncovered`) says how much of the
@@ -289,3 +293,28 @@ Not a probe. The sampling harness `probe_copies.exs` and `probe_nx_copies.exs` s
 sampled every 5 ms rather than read before and after, since the copies that matter are
 transient, and binary, BEAM total and RSS all reported because no one of them sees both memory
 regimes. A raise inside a measured span becomes a failed row rather than stopping the run.
+
+## `probe_streaming.py` and `probe_streaming_rejoin.py`
+
+```bash
+docker compose up -d spark-reattach
+dev/.venv/bin/python dev/probe_streaming.py       # prints an `export LATU_SID=` line
+export LATU_SID=...
+dev/.venv/bin/python dev/probe_streaming_rejoin.py
+docker compose logs --tail 60 spark-reattach
+```
+
+Structured streaming, asked of a server before Latu builds any of it. PySpark is the oracle for
+the wire, as it is everywhere else here, but the questions that decide the design are semantic:
+what a blocking `awaitTermination` costs in reattaches, whether a query outlives the client that
+started it, and whether `interruptAll` reaches one. The **reattach** server is not optional. Its
+`senderMaxStreamDuration=5s` is what makes the reattach cost visible in seconds rather than
+forty minutes.
+
+Every blocking command runs on a deadlined thread, because a probe asking what blocking calls
+cost must not be able to block forever. `processAllAvailable` is why: it never returns on an
+unbounded source, so it is asked of a bounded file source the probe writes itself, which is also
+the shape a deterministic streaming test wants.
+
+The two are one probe in two processes, because "does the query survive its client" cannot be
+asked from the client. The second stops every query it finds, so it is also the cleanup.

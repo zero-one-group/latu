@@ -3,6 +3,34 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## Unreleased
+
+**Structured streaming.** `read/2` and `table/3` take `is_streaming: true`; `with_watermark/3`
+and `distinct/3`'s `within_watermark:` cover the stateful side; `write_stream/2` starts a query
+with the `:available_now`, `:once`, processing-time and continuous triggers and hands back a
+`%Latu.StreamingQuery{}`, whose module carries every `StreamingQueryCommand` and the four
+`spark.streams` verbs PySpark uses. `with_stream/3` is the bracket. `await_termination/2` is a
+loop of bounded server waits rather than one call, because a Connect server cuts a silent
+response stream every `senderMaxStreamDuration`; the semantics are Spark's. Progress and status
+decode into snake-cased maps of Spark's own JSON. `Latu.Error` gains the kind `:query`, for a
+streaming query's own failure as `exception/1` reports it. `foreach` and `foreachBatch` are not
+offered at all, because both carry a serialised closure; `docs/deviations.md` says why.
+
+**The streaming listener bus**, as `Latu.StreamingQuery.events/1`: a lazy `Stream` of every
+streaming event on the session, each one Spark's own JSON snake-cased under a `:type` of
+`:progress`, `:idle`, `:terminated` or `:unknown`. Opens on first enumeration, closes when the
+enumeration ends. `[:latu, :streaming, :event]` is emitted per event.
+
+**`Latu.Client.Execution`'s empty-reattach guard is now per-execution.** It was a flat 100
+empty response streams for everything; a result or a command still gets that, and the listener
+bus gets `silence: :expected`, where an idle stream is normal *after* the server has answered
+but still fatal before it. Internal, and the reason is arithmetic: a Connect server ends a
+silent stream every `senderMaxStreamDuration` whether or not it sent anything, so at 100 a
+healthy bus died after eight minutes on a 5s sender.
+
+Additive; no migration. The 2026-09-02 decision that streaming was a separate package is
+reversed in `docs/decisions.md`.
+
 ## 0.5.0 — 2026-09-08
 
 One behavioural change, and it is the reason this is a minor rather than a patch.
