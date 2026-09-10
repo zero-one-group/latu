@@ -21,6 +21,12 @@ docker run -p 15002:15002 apache/spark:4.2.0 \
 
 In this repo, `docker compose up -d spark-connect` does it.
 
+A container is the fastest way to a server. It is the wrong one once you write files. A path
+is the server's, so a container writes it as the container's user, uid 185 in this image. Your
+own process may then be unable to rename or delete what Spark just produced. Install Spark on
+the machine if the output is going anywhere near Explorer or your editor.
+[Coming from Explorer](from-explorer.md) has the detail.
+
 ## Connect
 
 A session is a plain struct wrapping a gRPC channel. Latu adds nothing to your supervision
