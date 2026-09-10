@@ -35,8 +35,7 @@ Requires Elixir ~> 1.20 and a Spark **4.2.0** Connect server.
 Point at your cluster's `sc://` URL, or run one locally:
 
 ```bash
-docker run -p 15002:15002 apache/spark:4.2.0 \
-  /opt/spark/sbin/start-connect-server.sh --packages org.apache.spark:spark-connect_2.13:4.2.0
+docker run -p 15002:15002 apache/spark:4.2.0 /opt/spark/sbin/start-connect-server.sh --wait
 ```
 
 ## The three lines at the top of your file

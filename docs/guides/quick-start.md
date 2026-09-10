@@ -15,8 +15,7 @@ bindings. The pattern matches are the assertions.
 Point at a cluster's `sc://` URL, or run one locally:
 
 ```bash
-docker run -p 15002:15002 apache/spark:4.2.0 \
-  /opt/spark/sbin/start-connect-server.sh --packages org.apache.spark:spark-connect_2.13:4.2.0
+docker run -p 15002:15002 apache/spark:4.2.0 /opt/spark/sbin/start-connect-server.sh --wait
 ```
 
 In this repo, `docker compose up -d spark-connect` does it.

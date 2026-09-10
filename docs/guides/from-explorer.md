@@ -245,11 +245,11 @@ on the other. The path in each call names a different disk. Latu's is the server
 is yours, and they are the same disk only when Spark runs on this machine.
 
 Ownership is the part that surprises people. A containerised Spark writes as its own user, uid
-185 in the official image, so on Linux your VM cannot rename or delete the directory it just
-produced. Running the container as your own uid looks like the fix and is not one: the image's
-log directory and its group write bit both belong to 185, and the entrypoint that would paper
-over the mismatch is the one a custom `entrypoint:` replaces. Install Spark on the machine when
-files are the handover, and keep the container for a server nothing local has to touch.
+185 in the official image, so on Linux your own process cannot rename or delete the directory it
+just produced. Running the container as your own uid looks like the fix and is not one: the
+image's log directory and its group write bit both belong to 185, and the entrypoint that would
+paper over the mismatch is the one a custom `entrypoint:` replaces. Install Spark on the machine
+when files are the handover, and keep the container for a server nothing local has to touch.
 
 ### Where to put the boundary
 
