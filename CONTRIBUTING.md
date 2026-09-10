@@ -18,6 +18,14 @@ Both halt on the first failure and exit non-zero. `docker compose up -d spark-co
 starts the ordinary server on :15002; the second profile on :15003 runs with a five-second
 `senderMaxStreamDuration`, which is what makes the reattach tests mean anything.
 
+**CI runs one thing `mix check.all` does not**, because it needs a stack a bare `up -d` leaves
+alone. Run it before a PR that touches `docs/guides/object-storage.md` or the `s3` profile:
+
+```bash
+docker compose --profile s3 up -d --wait
+mix test --include s3
+```
+
 `mix fixtures` needs the oracle's venv. The data files it writes are generated rather than
 committed, so the suite stays hermetic and carries no third-party data licence. `mix check`
 needs none of them; `mix check.all` refuses to start without them, naming this command.
@@ -106,7 +114,8 @@ is in `docs/decisions.md`.
 - [ ] `CHANGELOG.md`'s top entry is the new version and date, migration in one line
 - [ ] `@version` in `mix.exs` matches it
 - [ ] the README's install snippet names the new minor
-- [ ] `mix check.all` green, both compose profiles up
+- [ ] `mix check.all` green, both compose profiles up, and `mix test --include s3` with the
+  `s3` profile up
 - [ ] `git rev-parse main origin/main` match
 
 **Release**

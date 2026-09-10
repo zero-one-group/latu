@@ -1668,3 +1668,43 @@ makes for a response arm.
 is the server's business, and a test that waits on it does not belong in a gate on `main`
 (S-D7's reasoning). What gates the bus is the offline state-machine tests: the ack latch, the
 emit-and-count, and both halves of the silence policy.
+
+## 2026-09-10 — The S3 stack is a second compose file, and its guide is `:s3`-tagged
+
+**Object storage gets a guide because the client-side answer is one string and the server-side
+answer is not.** `docs/guides/object-storage.md`. What is worth documenting is the part Latu
+does not do: which jars the cluster needs, and that `spark.hadoop.*` is a start-up setting a
+Connect client cannot reach — so credentials arrive either as session confs under their raw
+Hadoop keys (Spark copies every SQL conf into the data source's `Configuration`) or as reader
+options (`newHadoopConfWithOptions`, minus `path` and `paths`). `Latu.add_jar/3` is not a route
+for the filesystem itself: it reaches the driver's classloader, and every JVM that opens an
+object needs the classes.
+
+**The stack is a Compose profile in `docker-compose.yml`, not a second file.** Two images and
+several hundred megabytes of jars are too much to put on a bare `docker compose up -d`, so it
+has to be opt-in — but it is gated infrastructure, and the file that declares what this repo
+needs is where that belongs, the way the reattach server already is. `--profile s3` opts in.
+The download is cached in the `ivy-cache` volume, mounted on `/opt/spark/work-dir` because a
+fresh named volume inherits the ownership of the image directory it covers, and that is the
+only one uid 185 owns. `hadoop-aws` tracks the *image's* bundled Hadoop rather than
+Spark's version number, so it reads `HADOOP_AWS_VERSION` beside `SPARK_VERSION`: the one pair
+a version bump has to move by hand.
+
+**Its fences are gated by CI, not by `mix check.all`.** They are the only guide fences whose
+subject is the thing they cannot reach from the default gate, which is a worse gap than
+cookbook's JDBC and merge — those are asides on a page that otherwise executes. So
+`test/integration/s3_guide_test.exs` runs exactly the fences `guides_test.exs` skips, sharing
+`Latu.Guides` so that a fence and its marker have one definition, and `ci.yml` runs it as its
+own job with the profile up.
+
+**`:s3` and `:streaming` are excluded from `mix check.all` for reasons that do not travel
+together, and only one of them survives into CI.** A processing-time streaming test is a sleep
+(S-D7), which is a property of the test and holds on a runner as much as on a laptop. `:s3` is
+excluded because nothing starts the stack — a fact about the default local loop, not about the
+tests, which are deterministic and need no service beyond containers. So `:s3` goes on the PR
+gate and `:streaming` does not. Its own job rather than a step in the `mix check.all` one, for
+the reason `protos` is separate: an outage at Maven Central should not be able to fail the
+main signal. **No schedule for either.** A weekly run finds a break up to seven days after the
+commit that caused it, with no PR to attach it to; the same reasoning that kept
+`spark-versions.yml` on `workflow_dispatch`. What a schedule is for is decay without a commit,
+which is that workflow's subject and not this one's.

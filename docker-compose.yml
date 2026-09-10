@@ -80,3 +80,90 @@ services:
       start_period: 15s
     volumes:
       - ./fixtures:/fixtures:ro
+
+  # The S3 stack, behind `--profile s3`: it pulls two more images and several hundred
+  # megabytes of jars, so a bare `up -d` must not start it. dev/README.md.
+  minio:
+    profiles: ["s3"]
+    # MinIO stopped publishing free images in October 2025; this is the last one.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: latu-minio
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: latu
+      MINIO_ROOT_PASSWORD: latu-secret-key
+    ports:
+      - "9000:9000"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  # Creates the bucket and exits. `service_completed_successfully` below is what makes the
+  # Spark server wait for it.
+  minio-init:
+    profiles: ["s3"]
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    container_name: latu-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - mc alias set s3 http://minio:9000 latu latu-secret-key &&
+        mc mb --ignore-existing s3/latu
+    restart: "no"
+
+  spark-s3:
+    profiles: ["s3"]
+    image: apache/spark:${SPARK_VERSION:-4.2.0}
+    container_name: latu-spark-s3
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "15004:15002"
+      - "4042:4040"
+    entrypoint: ["/opt/spark/sbin/start-connect-server.sh"]
+    command:
+      - "--wait"
+      # The Connect server ships in the assembly; the S3A filesystem does not. The version
+      # tracks the image's own hadoop-client-api, so it moves with SPARK_VERSION and not on
+      # its own — docs/guides/object-storage.md.
+      - "--packages"
+      - "org.apache.hadoop:hadoop-aws:${HADOOP_AWS_VERSION:-3.5.0}"
+      # Ivy resolves into $HOME, which is /nonexistent in this image, so it is redirected
+      # into the cached volume below — dev/README.md.
+      - "--conf"
+      - "spark.jars.ivy=/opt/spark/work-dir/.ivy2"
+      - "--conf"
+      - "spark.connect.grpc.binding.address=0.0.0.0"
+      - "--conf"
+      - "spark.connect.grpc.binding.port=15002"
+      - "--conf"
+      - "spark.sql.session.timeZone=UTC"
+      - "--conf"
+      - "spark.sql.shuffle.partitions=4"
+      - "--conf"
+      - "spark.ui.port=4040"
+    volumes:
+      # On work-dir because a fresh named volume inherits the ownership of the image
+      # directory it covers, and that is the only one uid 185 owns — dev/README.md.
+      - ivy-cache:/opt/spark/work-dir
+    # No s3a settings here on purpose: the guide sets all of them from the client, which is
+    # what a cluster you cannot restart forces you to do anyway.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15002"]
+      interval: 5s
+      timeout: 3s
+      # A cold `--packages` pulls the AWS SDK bundle. Minutes, once per ivy-cache volume.
+      retries: 90
+      start_period: 30s
+
+volumes:
+  minio-data:
+  ivy-cache:

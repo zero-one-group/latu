@@ -80,3 +80,47 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: ./dev/check_protos.sh
+
+  # Its own job for the same reason `protos` is: a Maven Central outage should not be able to
+  # fail `mix check.all`. What it runs is `docs/guides/object-storage.md`'s two S3 fences, the
+  # only guide fences the main job cannot reach. Why here and not on a schedule, and why
+  # `:streaming` does not join it: docs/decisions.md.
+  s3:
+    name: mix test --include s3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # First, so the AWS SDK resolve overlaps the BEAM setup. `--profile s3` also starts the
+      # two default servers; they cost a cold JVM each and prove the profiles coexist.
+      - run: docker compose --profile s3 up -d
+
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+
+      # No `mix fixtures` and no venv: `Latu.Fixtures.check!` only demands the data files when
+      # `:integration` is included, and these fences build their own frame.
+
+      # spark-s3's healthcheck allows minutes — a cold `--packages` pulls the SDK bundle, and
+      # this runner has no ivy-cache volume to inherit.
+      - run: docker compose --profile s3 up -d --wait
+
+      - run: mix test --include s3
+
+      - name: Spark and MinIO logs
+        if: failure()
+        run: docker compose --profile s3 logs --no-color --tail=200

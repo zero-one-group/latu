@@ -35,6 +35,49 @@ a session the client merely disconnects lives on the server for `defaultSessionT
 (60 min) with its plan cache and generated classes, and a long-lived dev container accumulates
 a run's worth per run.
 
+## The S3 stack
+
+`docker-compose.yml`'s `s3` profile: MinIO on :9000 with a bucket `latu`, and a third Connect
+server on :15004 carrying `hadoop-aws`. A bare `up -d` leaves all three alone, because they
+cost two more images and several hundred megabytes of jars that most work here never needs.
+`docs/guides/object-storage.md` is the page they exist for.
+
+```bash
+docker compose --profile s3 up -d --wait
+docker compose --profile s3 down       # -v as well to start clean
+```
+
+**The profile is needed on `down` too.** A bare `docker compose down` stops the services with
+no profile and leaves these three running, which reads as a teardown that did nothing.
+
+A profile rather than a second file: this is gated infrastructure now — CI runs it as its own
+job — and the file that says what the repo needs should say so.
+
+`--packages` **is** needed here, unlike for the Connect server itself, and
+`org.apache.hadoop:hadoop-aws` tracks the image's own `hadoop-client-api` — 3.5.0 on Spark
+4.2.0. The first start pulls the AWS SDK bundle from Maven Central, several hundred megabytes,
+which is why that healthcheck allows minutes.
+
+**That download is cached in the `ivy-cache` volume, and `-v` is what throws it away.** A
+`--profile s3 down` keeps it, so a recreate is seconds; adding `-v` is the deliberate
+start-clean and costs the full pull again. The volume is mounted on `/opt/spark/work-dir`
+rather than beside the conf that names it, because a fresh named volume takes the ownership of
+the image directory it covers: the Spark image runs as uid 185 with `/nonexistent` for a home,
+and `work-dir` is the one directory it chowns. A volume at `/tmp/.ivy2` arrives root-owned and
+unwritable.
+
+The guide's two S3 fences are marked not-executed, so `mix check.all` never runs them.
+`test/integration/s3_guide_test.exs` does, against this stack, which is what `:s3` is for:
+
+```bash
+docker compose --profile s3 up -d --wait
+mix test --include s3
+```
+
+It shares `Latu.Guides` with `guides_test.exs`, so there is one definition of a fence and of
+the marker. `mix check.all` does not run it; the `s3` job in `.github/workflows/ci.yml` does,
+on every PR.
+
 ## One-time setup
 
 ```bash
@@ -142,6 +185,10 @@ cannot be added and left meaningless.
 
 `docker-compose.yml` reads `SPARK_VERSION`, so both servers move together. The goldens only
 report here: a newer Spark is allowed to render differently, and that diff is the point.
+
+The `s3` profile reads it too, and `HADOOP_AWS_VERSION` beside it: that pair is the one place
+a version bump is not automatic, because `hadoop-aws` tracks the image's bundled Hadoop rather
+than Spark's own number. Set both or neither.
 
 ```bash
 docker compose down

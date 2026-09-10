@@ -3,6 +3,15 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## Unreleased
+
+**A guide for S3-compatible object storage**, `docs/guides/object-storage.md`: what S3A needs
+on the server, and the two ways a Connect client can tell it — session confs under their raw
+Hadoop keys, or reader options scoped to one frame. Neither is `spark.hadoop.*`, which is a
+start-up setting a Connect client cannot reach. `docker-compose.yml` grows an `s3` profile —
+MinIO and a Spark that can read it, left alone by a bare `up -d` — and `mix test --include s3`
+runs the guide's S3 fences against it, as its own CI job rather than inside `mix check.all`.
+
 ## 0.6.0 — 2026-09-10
 
 **Structured streaming.** `read/2` and `table/3` take `is_streaming: true`; `with_watermark/3`

@@ -202,6 +202,8 @@ would take, is in `docs/decisions.md`.
   * [Quick start](https://hexdocs.pm/latu/quick-start.html). Connect, build, run. Every line of
     it is executed.
   * [Cookbook](https://hexdocs.pm/latu/cookbook.html). Recipes for the things you actually do.
+  * [Object storage](https://hexdocs.pm/latu/object-storage.html). Reading S3 and anything that
+    speaks it: what the server needs, and the two ways to tell it from a Connect client.
   * [Cheatsheet](https://hexdocs.pm/latu/cheatsheet.html). Every verb, one line each.
   * [Coming from PySpark](https://hexdocs.pm/latu/from-pyspark.html). The five differences, and
     a translation table for the calls you make every day.

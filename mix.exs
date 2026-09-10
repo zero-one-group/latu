@@ -55,6 +55,7 @@ defmodule Latu.MixProject do
         "CHANGELOG.md",
         "docs/guides/quick-start.md",
         "docs/guides/cookbook.md",
+        "docs/guides/object-storage.md",
         "docs/guides/from-pyspark.md",
         "docs/guides/from-explorer.md",
         "docs/cheatsheet.cheatmd",
@@ -66,6 +67,7 @@ defmodule Latu.MixProject do
         Guides: [
           "docs/guides/quick-start.md",
           "docs/guides/cookbook.md",
+          "docs/guides/object-storage.md",
           "docs/guides/from-pyspark.md",
           "docs/guides/from-explorer.md"
         ],
@@ -191,6 +193,11 @@ defmodule Latu.MixProject do
         "compile",
         "test --warnings-as-errors"
       ],
+      # **"all" is relative to `check`, not absolute**, and two tags stay out on purpose:
+      # `:streaming`, because a processing-time test is a sleep (docs/decisions.md, S-D7), and
+      # `:s3`, because it needs `docker compose --profile s3`. CI gates the second as its own
+      # job and gates the first nowhere — CONTRIBUTING.md's release checklist is the full set.
+      #
       # `mix docs` is spawned through `env` because this alias resolves under `:test` (the
       # `preferred_envs` above) and `ex_doc` is `only: :dev` — a bare "docs" cannot run here,
       # and a `Mix.env()` test around it is always false. `mix cmd` runs its arguments through
