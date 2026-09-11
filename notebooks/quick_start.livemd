@@ -1,0 +1,110 @@
+# Latu quick start
+
+```elixir
+Mix.install([
+  {:latu, "~> 0.7"},
+  {:kino, "~> 0.19"}
+])
+```
+
+## A server to talk to
+
+Latu builds a query plan in this notebook and Spark runs it. There is no JVM in the runtime
+and no cluster on this machine. You need a Spark Connect server, and nothing else.
+
+Point at a cluster's `sc://` URL, or start one here:
+
+```bash
+docker run -p 15002:15002 apache/spark:4.2.0 /opt/spark/sbin/start-connect-server.sh --wait
+```
+
+```elixir
+url = Kino.Input.text("Spark Connect URL", default: "sc://localhost:15002")
+```
+
+A session is a plain struct wrapping a gRPC channel. Nothing joins the supervision tree.
+
+```elixir
+session = Latu.connect!(Kino.Input.read(url))
+
+Latu.spark_version!(session)
+```
+
+## Some data
+
+Verbs are called qualified, the way `Enum` is. Expressions come from `Latu.Column`, which is
+small enough to import, and Spark's function library is aliased as `F`.
+
+`Latu.create_dataframe!/2` ships local rows to the cluster as Arrow. A frame renders as the
+table Spark draws for it, so the last line of a cell is enough to look at one.
+
+```elixir
+import Latu.Column
+alias Latu.Functions, as: F
+
+df =
+  Latu.create_dataframe!(session, [
+    %{id: 1, line: "Latu builds a plan"},
+    %{id: 2, line: "Spark runs the plan on a cluster"},
+    %{id: 3, line: "the plan is just data"}
+  ])
+```
+
+## Filter, and look before you run
+
+A verb is a pure function from one plan to the next, so nothing has run yet. Inspecting a frame
+shows the plan's spine and costs no round trip; rendering it runs the query.
+
+```elixir
+about_spark = Latu.filter(df, contains(:line, "Spark"))
+
+IO.inspect(about_spark, label: "plan")
+
+about_spark
+```
+
+## Word count
+
+Spark's own quick start ends with MapReduce, and it is the same three verbs here.
+`Latu.count/1` on a grouped frame is lazy, a transformation that adds a `count` column.
+
+```elixir
+counts =
+  df
+  |> Latu.select(word: F.explode(F.split(:line, "\\s+")))
+  |> Latu.group_by(:word)
+  |> Latu.count()
+  |> Latu.sort([desc(:count)])
+```
+
+## Bring it back
+
+An action returns `{:ok, value}` or `{:error, %Latu.Error{}}`, and every action has a `!` twin.
+Rows come back as maps with atom keys, or as an Explorer frame, which Livebook renders as a
+table of its own.
+
+```elixir
+Latu.collect!(counts)
+```
+
+```elixir
+Latu.to_explorer!(counts)
+```
+
+## Disconnect
+
+Closing the channel leaves the server's own session to time out. `Latu.release_session/2` ends
+it now.
+
+```elixir
+Latu.disconnect!(session)
+```
+
+## Where to go next
+
+  * The [quick start](https://hexdocs.pm/latu/quick-start.html) on hexdocs has the same steps
+    with writing, caching and SQL added.
+  * The [cookbook](https://hexdocs.pm/latu/cookbook.html) has recipes for the things you
+    actually do.
+  * The [cheatsheet](https://hexdocs.pm/latu/cheatsheet.html) is the whole surface, one line
+    each.

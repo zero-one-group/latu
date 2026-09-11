@@ -251,6 +251,29 @@ image's log directory and its group write bit both belong to 185, and the entryp
 paper over the mismatch is the one a custom `entrypoint:` replaces. Install Spark on the machine
 when files are the handover, and keep the container for a server nothing local has to touch.
 
+The other direction has a call. `Latu.copy_to_fs/3` takes bytes and a path, and the server
+writes the file itself, onto whatever its default filesystem is. The bytes never touch a disk
+you share with Spark, so a container is no obstacle. `Explorer.DataFrame.dump_parquet!/1` is
+where the bytes come from.
+
+```elixir
+# A single-machine server refuses a destination on its own disk unless told otherwise. A
+# cluster whose default filesystem is HDFS or object storage needs nothing.
+:ok = Latu.set_conf(session, "spark.sql.artifact.copyFromLocalToFs.allowDestLocal", "true")
+
+bytes = Explorer.DataFrame.dump_parquet!(local)
+:ok = Latu.copy_to_fs(session, "/tmp/latu_from_explorer/cities.parquet", bytes)
+
+{:ok, [%{city: "Hobart"}]} =
+  session
+  |> Latu.read(format: "parquet", path: "/tmp/latu_from_explorer/cities.parquet")
+  |> Latu.filter(less(:pop, 1_000_000))
+  |> Latu.collect()
+```
+
+The file stays after the session ends, and any later session can read it. That is the
+difference from `Latu.create_dataframe/3`, which carries the bytes inside one plan.
+
 ### Where to put the boundary
 
 **Spark for the scan, the shuffle and the join; Explorer for the last mile.** Aggregate on the

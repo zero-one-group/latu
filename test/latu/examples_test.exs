@@ -32,7 +32,8 @@ defmodule Latu.ExamplesTest do
     "CONTRIBUTING.md",
     "usage-rules.md",
     "CLAUDE.md",
-    "docs/deviations.md"
+    "docs/deviations.md",
+    "notebooks/quick_start.livemd"
   ]
 
   @excused %{
@@ -171,8 +172,9 @@ defmodule Latu.ExamplesTest do
   # Every markdown doc the repo *owns*. Walked rather than listed, so a page in a directory
   # nobody thought of still has to be accounted for — but build output is not ours: `doc/` is
   # where ExDoc writes, and it appears the moment anyone runs `mix docs`.
+  # A Livebook notebook is markdown with a different extension, and its cells are examples.
   defp markdown do
-    "**/*.md"
+    "**/*.{md,livemd}"
     |> Path.wildcard()
     |> Enum.reject(&String.starts_with?(&1, ["deps/", "_build/", "doc/"]))
     |> Enum.sort()

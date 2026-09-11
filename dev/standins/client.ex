@@ -54,6 +54,7 @@ defmodule Latu.Client do
   def config(session, _op), do: {:ok, [], session}
   def cache_artifacts(session, _blobs), do: {:ok, [], session}
   def add_jar(session, _name, _contents), do: {:ok, session}
+  def copy_to_fs(session, _path, _contents), do: {:ok, session}
   def artifact_requests(_session, _artifacts, _prefix \\ "cache/"), do: []
   def responses(_session, _plan, _opts \\ []), do: []
 end

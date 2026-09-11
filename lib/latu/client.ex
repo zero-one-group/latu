@@ -572,6 +572,29 @@ defmodule Latu.Client do
     add_artifacts(session, [{name, contents}], "jars/")
   end
 
+  @doc """
+  Copy bytes to a path on the driver's default filesystem, under `AddArtifacts`'s
+  `forward_to_fs` prefix.
+
+  The same upload as `add_jar/3`; the difference is on the server.
+  `SparkConnectAddArtifactsHandler` routes the prefix to `ArtifactManager.uploadArtifactToFs`,
+  which hands the staged file to Hadoop's `FileSystem.copyFromLocalFile` with overwrite on and
+  keeps nothing in the session. So none of the artifact rules apply: no
+  `ARTIFACT_ALREADY_EXISTS`, and the same path can be written twice. The name is the prefix
+  followed by the absolute path, `forward_to_fs/data/x`, which is how PySpark spells it.
+
+  A destination on the driver's local disk is refused unless the session or the server allows
+  it; see `Latu.copy_to_fs/3`.
+  """
+  @spec copy_to_fs(Session.t(), String.t(), binary()) ::
+          {:ok, Session.t()} | {:error, Error.t()}
+  def copy_to_fs(%Session{channel: nil}, _path, _contents), do: {:error, not_connected()}
+
+  def copy_to_fs(%Session{} = session, path, contents)
+      when is_binary(path) and is_binary(contents) do
+    add_artifacts(session, [{path, contents}], "forward_to_fs")
+  end
+
   defp sha256(blob), do: :crypto.hash(:sha256, blob) |> Base.encode16(case: :lower)
 
   # One artifact per hash the server lacks, first blob wins on duplicates.
@@ -635,7 +658,8 @@ defmodule Latu.Client do
   # wire shape is testable with no server. Small blobs pack into Batch requests up to the chunk
   # size; a larger blob flushes the batch and streams as BeginChunkedArtifact + 32 KiB chunks,
   # mirroring PySpark's _add_artifacts. The prefix is the artifact's kind and the server routes
-  # on it: `cache/` for a blob a plan references by hash, `jars/` for `sparkContext.addJar`.
+  # on it: `cache/` for a blob a plan references by hash, `jars/` for `sparkContext.addJar`,
+  # `forward_to_fs` for a file copied onto the default filesystem.
   def artifact_requests(session, artifacts, prefix \\ "cache/")
 
   # `batch` holds the small blobs not yet packed into a request, `groups` the runs of requests
@@ -868,6 +892,8 @@ defmodule Latu.Client do
   end
 
   defp act({:fail, error}, state) do
+    error = whole_message("ExecutePlan", state.execution.session, error)
+
     {[{:error, error}], %{state | done?: true, outcome: :error}}
   end
 
@@ -1107,7 +1133,7 @@ defmodule Latu.Client do
 
   defp retrying(name, session, call, retry, attempt) do
     case rpc(name, session, call) do
-      {:error, %Error{} = error} = failure ->
+      {:error, %Error{} = error} ->
         if attempt < retry.max_retries and Retry.retryable?(error) do
           backoff = Retry.wait(retry, attempt, error.retry_delay)
           ids = %{session_id: session.session_id, rpc: name}
@@ -1115,7 +1141,7 @@ defmodule Latu.Client do
           Process.sleep(backoff)
           retrying(name, session, call, retry, attempt + 1)
         else
-          failure
+          {:error, whole_message(name, session, error)}
         end
 
       result ->
@@ -1208,8 +1234,30 @@ defmodule Latu.Client do
     end
   end
 
+  # The status message is the server's `Utils.abbreviate(getMessage, 2048)`, so one that fills
+  # the width and ends in `...` was cut. Only then is the detail fetched unasked: one bounded
+  # RPC on an error path, never for `FetchErrorDetails`' own failure, and best effort, so a
+  # fetch that fails leaves the error as it arrived. `docs/decisions.md`, 2026-09-11.
+  @abbreviation 2048
+
+  defp whole_message("FetchErrorDetails", _session, %Error{} = error), do: error
+
+  defp whole_message(_name, %Session{} = session, %Error{kind: :rpc, error_id: id} = error)
+       when is_binary(id) and byte_size(error.message) >= @abbreviation do
+    with true <- String.ends_with?(error.message, "..."),
+         {:ok, filled} <- error_details(session, error) do
+      filled
+    else
+      _ -> error
+    end
+  end
+
+  defp whole_message(_name, _session, error), do: error
+
   @doc """
   The full server-side cause chain for an error. See `Latu.error_details/2`.
+
+  Also fetched without being asked, once, when the gRPC status abbreviated the message.
   """
   @spec error_details(Session.t(), Error.t()) :: {:ok, Error.t()} | {:error, Error.t()}
   def error_details(%Session{channel: nil}, %Error{}), do: {:error, not_connected()}

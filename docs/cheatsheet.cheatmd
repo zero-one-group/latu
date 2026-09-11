@@ -17,6 +17,7 @@ Called qualified, the way `Enum` is.
 | `add_jar/3` | Put a jar on the session, so a class in it resolves by name. **+ !** |
 | `clone_session/2` | Fork the session on the server, returning the clone. **+ !** |
 | `connect/2` | Connect to a Spark Connect server. **+ !** |
+| `copy_to_fs/3` | Copy bytes to a file on the cluster's filesystem. **+ !** |
 | `disconnect/2` | Close the channel. **+ !** |
 | `error_details/2` | Fill in an error's full server-side cause chain. **+ !** |
 | `interrupt/2` | Cancel executions on the server, returning the operation ids it… **+ !** |

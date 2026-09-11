@@ -210,6 +210,15 @@ session
 |> Latu.sort(:id)
 |> Latu.show()
 
+# The other direction: bytes from here to a file on the server's default filesystem. A server
+# whose default filesystem is its own disk refuses that unless the session allows it.
+:ok = Latu.set_conf(session, "spark.sql.artifact.copyFromLocalToFs.allowDestLocal", "true")
+:ok = Latu.copy_to_fs(session, "/tmp/latu_example/cities.csv", "city,pop\nMelbourne,5200000\n")
+
+session
+|> Latu.read(format: "csv", path: "/tmp/latu_example/cities.csv", header: true)
+|> Latu.show()
+
 # SQL runs eagerly — DDL works — and binds args as literals, a list for `?` and a map for
 # `:name`. The DataFrame that comes back queries the result, not the query again.
 session

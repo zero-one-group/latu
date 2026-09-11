@@ -9,6 +9,7 @@
   <a href="https://hex.pm/packages/latu"><img alt="Hex version" src="https://img.shields.io/hexpm/v/latu.svg"></a>
   <a href="https://hexdocs.pm/latu"><img alt="Hexdocs" src="https://img.shields.io/badge/hex-docs-blue.svg"></a>
   <a href="https://github.com/zero-one-group/latu/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/hexpm/l/latu.svg"></a>
+  <a href="https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fzero-one-group%2Flatu%2Fblob%2Fmain%2Fnotebooks%2Fquick_start.livemd"><img alt="Run in Livebook" src="https://livebook.dev/badge/v1/blue.svg"></a>
 </p>
 
 A native Elixir DataFrame API for Apache Spark, over [Spark
@@ -193,13 +194,16 @@ RDDs and no `SparkContext`. Spark Connect offers no client in any language a pat
 
 Latu **calls** a user-defined function by name with `Latu.Column.fun/3`. A SQL UDF, a Hive UDF
 and a registered Java class all resolve the same way, and `CREATE FUNCTION` through `Latu.sql/3`
-is how you register one. Latu does **not** ship a jar from your machine. Why not, and what it
-would take, is in `docs/decisions.md`.
+is how you register one. `Latu.add_jar/3` puts a jar on the session for such a class to resolve
+from, and `Latu.copy_to_fs/3` puts a file on the cluster's filesystem. Both take bytes: Latu
+reads nothing from your disk.
 
 ## Where to go next
 
   * [Quick start](https://hexdocs.pm/latu/quick-start.html). Connect, build, run. Every line of
-    it is executed.
+    it is executed. The same steps as a
+    [Livebook notebook](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fzero-one-group%2Flatu%2Fblob%2Fmain%2Fnotebooks%2Fquick_start.livemd),
+    one click from the badge above.
   * [Cookbook](https://hexdocs.pm/latu/cookbook.html). Recipes for the things you actually do.
   * [Cheatsheet](https://hexdocs.pm/latu/cheatsheet.html). Every verb, one line each.
   * [Coming from PySpark](https://hexdocs.pm/latu/from-pyspark.html). The five differences, and

@@ -196,6 +196,55 @@ defmodule Latu do
   end
 
   @doc """
+  Copy bytes to a file on the cluster's filesystem.
+
+      bytes = Explorer.DataFrame.dump_parquet!(frame)
+      :ok = Latu.copy_to_fs(session, "/data/orders.parquet", bytes)
+      orders = Latu.read(session, format: "parquet", path: "/data/orders.parquet")
+
+  PySpark's `copyFromLocalToFs`. The bytes travel as an artifact and the server writes them with
+  Hadoop's `FileSystem`, so they land on the driver's **default filesystem**: HDFS or object
+  storage on a cluster, the driver's own disk on a single machine. `path` is absolute and
+  carries no scheme; the default filesystem decides where `/data` is. An existing file is
+  overwritten, and nothing stays in the session.
+
+  The other way to hand data over is `create_dataframe/3`, which carries the bytes inside the
+  plan. This one leaves a file behind that any later session can `read/2`, and it is the route
+  when the file and the server are not on the same disk, which is every container.
+
+  **A destination on the driver's local disk is refused by default**, because it would let a
+  client overwrite any file the driver can. A single-machine server allows it with
+  `spark.sql.artifact.copyFromLocalToFs.allowDestLocal`, set on the session with `set_conf/3`
+  or on the server at start-up; a cluster whose default filesystem is not local needs nothing.
+  """
+  @spec copy_to_fs(Session.t(), String.t(), binary()) :: :ok | {:error, Error.t()}
+  def copy_to_fs(%Session{} = session, path, contents)
+      when is_binary(path) and is_binary(contents) do
+    with {:ok, _session} <- Client.copy_to_fs(session, fs_path!(path), contents), do: :ok
+  end
+
+  @doc "Like `copy_to_fs/3`, raising on failure."
+  @spec copy_to_fs!(Session.t(), String.t(), binary()) :: :ok
+  def copy_to_fs!(%Session{} = session, path, contents) do
+    case copy_to_fs(session, path, contents) do
+      :ok -> :ok
+      {:error, error} -> raise error
+    end
+  end
+
+  # PySpark's two checks, with one message: absolute, and no scheme, because the server prepends
+  # a `/` and resolves the rest against the default filesystem.
+  defp fs_path!(path) do
+    if String.starts_with?(path, "/") and is_nil(URI.parse(path).scheme) do
+      path
+    else
+      raise ArgumentError,
+            "copy_to_fs/3 takes an absolute path with no scheme, like \"/data/x.parquet\"; " <>
+              "the default filesystem decides where it lands. Got #{inspect(path)}"
+    end
+  end
+
+  @doc """
   Fill in an error's full server-side cause chain.
 
       {:error, error} = Latu.collect(df)
@@ -205,15 +254,17 @@ defmodule Latu do
       #=> ["Job aborted due to stage failure: ...", "/ by zero"]
 
   **Most of what you want is already on the error**, with no round trip: the Spark error class,
-  the SQLSTATE, the JVM class hierarchy, the message parameters and — when the server is
-  configured to send one — a stack trace all arrive in the gRPC trailers. See `Latu.Error`.
+  the SQLSTATE, the JVM class hierarchy, the message parameters and, when the server is
+  configured to send one, a stack trace all arrive in the gRPC trailers. See `Latu.Error`.
   This adds what they do not carry: the **chain of causes**, root cause last, each with its
-  own frames — and the **message whole**, where the gRPC status carries the server's
-  2048-character abbreviation of it.
+  own frames.
 
-  So it is an explicit call rather than something every failure pays for. PySpark fetches it
-  eagerly on every error; a Latu action returns `{:error, _}` for expected refusals too, and
-  spending a round trip on each of those would be a poor trade.
+  **One case is handled without a call.** The gRPC status carries the server's message cut at
+  2048 characters. When an error arrives cut, Latu fetches the detail before handing the error
+  back, so `message` is whole and `causes` is filled. That is one bounded round trip, on an
+  error path, and only when the message shows the cut. Every other error is an explicit call,
+  as here. PySpark fetches on every error; a Latu action returns `{:error, _}` for expected
+  refusals too, and a round trip on each of those would be a poor trade.
 
   An error with no `error_id` — anything that did not come from the server — comes back
   unchanged rather than as a failure.

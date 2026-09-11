@@ -283,6 +283,13 @@ Elixir has no varargs; the tuple keeps the bucket count from reading as a column
 `create_temp_view(df, name, global:, replace:)`. Four methods, one proto with two booleans — verbs
 collapse where the relation underneath is one thing.
 
+### `spark.copyFromLocalToFs(local_path, dest_path)` → `copy_to_fs/3` — bytes, not a path
+
+Latu does no local file IO, as `Latu.add_jar/3` does none: the caller hands over bytes, so
+"from local" leaves the name. The destination keeps PySpark's rules, absolute and without a scheme,
+because the server puts the leading `/` back and resolves the rest against the driver's default
+filesystem. Same wire shape: `AddArtifacts` under the `forward_to_fs` prefix.
+
 ### `spark.sql(query, args, **kwargs)`
 
 `Latu.sql(session, query, args)`, and `views:` for the frames. Same eager `SqlCommand`, same arg
@@ -809,7 +816,9 @@ already hold the whole frame and pay nothing for it.
 
 The full server-side cause chain, root cause last. PySpark fetches `FetchErrorDetails` eagerly
 inside its exception conversion; Latu makes it a call, because most of what it would give you is
-already on the error and an expected refusal should not cost a round trip.
+already on the error and an expected refusal should not cost a round trip. The one automatic
+fetch is for a message the status cut at 2048 characters, where what is missing is the message
+itself.
 
 ### `Latu.Progress` and the `:progress` option
 
