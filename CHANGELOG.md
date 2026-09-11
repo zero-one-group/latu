@@ -5,6 +5,13 @@ remove; each such change is listed here with the migration in one line.
 
 ## Unreleased
 
+**A Spark versions page**, `docs/spark-versions.md`: what a 4.2 client does against 4.1.3 and
+4.0.4, measured by the integration suite, plus 3.5, newer servers and the managed platforms'
+URL shapes. Two things the runs changed in Latu. A bytes conf with a unit suffix, which is how
+4.1 reports `localRelationSizeLimit`, is parsed rather than crashed on. And the two ways an
+older server refuses a 4.2 client, `UNIMPLEMENTED` for an RPC it lacks and an unset-oneof
+`INTERNAL_ERROR` for a plan node protobuf dropped, now carry a sentence naming the cause.
+
 **`Latu.copy_to_fs/3`.** Bytes to a file on the cluster's filesystem, PySpark's
 `copyFromLocalToFs`: `AddArtifacts` under the `forward_to_fs` prefix, written by the server with
 Hadoop's `FileSystem` onto its default filesystem, overwriting. The route for handing Explorer a

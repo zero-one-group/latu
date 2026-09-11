@@ -1770,3 +1770,36 @@ notebook page would be a fifth guide saying what the first one says. It is gated
 prose is: `examples_test.exs`'s corpus now includes `*.livemd`, so every cell parses and every
 `Latu.` call resolves at its arity. Its cells are not executed by the suite, since `Mix.install`
 cannot run inside a Mix project; the quick start guide, which it mirrors, is.
+
+## 2026-09-11 — What the first backward runs found, and what Latu changed because of them
+
+`docs/spark-versions.md` is the record; this is the reasoning behind the three code changes it
+produced. Measured against `apache/spark:4.1.3` and `4.0.4` with the integration suite: 13 and
+27 failures of about 1230, every one attributable to a surface the server predates or an error
+class that moved, and the nine result goldens byte-identical on both. Run twice, because the
+first run found a Latu defect and the second measured without it; the 4.0.4 list was completed
+locally, since a pasted log arrives cut and a signed-out browser reads neither logs nor
+summaries.
+
+**A bytes conf is parsed as Spark spells it.** `create_dataframe/3` over the cache threshold
+read `spark.sql.session.localRelationSizeLimit` with `String.to_integer/1`, as PySpark does with
+`int()`. 4.1 reports the value as `3221225472b`, 4.2 as a bare count, so on 4.1 the call died
+in `binary_to_integer` with no useful message. `config_int!/2` now parses `JavaUtils.byteStringAs`'s
+suffixes. With that, `ChunkedCachedLocalRelation` **works on 4.1.3**; the earlier belief that it
+was 4.2-only came from the crash, not from the server. The missing-conf refusal on 4.0 now says
+"Spark 4.1 or newer".
+
+**An older server's two refusals name their cause.** `UNIMPLEMENTED` for an RPC the server
+lacks (`GetStatus` is 4.2, `CloneSession` is 4.1); and, for a plan node it lacks, an error the
+server phrases three ways across versions after protobuf silently dropped the unknown field:
+`This oneOf field in spark.connect.Relation is not set: RELTYPE_NOT_SET` (4.1),
+`Expected Relation to be set, but is empty.` and `CATTYPE_NOT_SET not supported.` (4.0).
+`Client.rpc_error/1` appends one sentence to each, leaving Spark's class and text intact, so a
+user on an older server reads what happened rather than an internal error. Matching three
+server phrasings is a small fragility accepted for the one failure mode nothing else explains.
+
+**Nothing is version-gated.** The 2026-09-10 decline of a runtime version check stands: the
+page tells a user what to expect, the messages tell them what happened, and Latu sends 4.2's
+plan to every server. The residual risk the page names, an optional 4.2 field silently ignored
+by an older server, has no known instance in what Latu offers, which is why `real_time` is not
+offered.

@@ -33,6 +33,7 @@ defmodule Latu.ExamplesTest do
     "usage-rules.md",
     "CLAUDE.md",
     "docs/deviations.md",
+    "docs/spark-versions.md",
     "notebooks/quick_start.livemd"
   ]
 

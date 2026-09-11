@@ -62,6 +62,7 @@ defmodule Latu.MixProject do
         "docs/cheatsheet.cheatmd",
         "usage-rules.md",
         "docs/deviations.md",
+        "docs/spark-versions.md",
         "CONTRIBUTING.md"
       ],
       groups_for_extras: [
@@ -71,7 +72,12 @@ defmodule Latu.MixProject do
           "docs/guides/from-pyspark.md",
           "docs/guides/from-explorer.md"
         ],
-        Reference: ["docs/cheatsheet.cheatmd", "usage-rules.md", "docs/deviations.md"]
+        Reference: [
+          "docs/cheatsheet.cheatmd",
+          "usage-rules.md",
+          "docs/deviations.md",
+          "docs/spark-versions.md"
+        ]
       ],
       # `mix docs` runs with warnings as errors, so the exemptions are named here. It warns on a
       # reference to something `@moduledoc false`, and Latu has three kinds it will always have:

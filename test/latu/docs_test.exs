@@ -71,6 +71,7 @@ defmodule Latu.DocsTest do
     "docs/cheatsheet.cheatmd",
     "usage-rules.md",
     "docs/deviations.md",
+    "docs/spark-versions.md",
     "CONTRIBUTING.md"
   ]
 
