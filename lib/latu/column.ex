@@ -212,6 +212,70 @@ defmodule Latu.Column do
   def ilike(column, pattern, escape), do: Plan.fun("ilike", [column, pattern, escape])
 
   # =============================================
+  # Nested data
+  # =============================================
+
+  @doc """
+  A struct field by name. Spark's `getField`.
+
+      get_field(F.from_json(:payload, "a INT, b STRING"), :a)
+
+  For a struct that has a column name of its own, a dotted reference is the same thing and
+  needs no call: `col("address.city")`. This reaches into an expression. The field name is a
+  name, so an atom and a string mean the same; `get_item/2` takes a value.
+  """
+  @spec get_field(term(), String.t() | atom()) :: Plan.expression()
+  def get_field(column, name) when is_binary(name), do: Plan.extract_value(column, name)
+
+  def get_field(column, name) when is_atom(name) and not is_nil(name) and not is_boolean(name) do
+    Plan.extract_value(column, Atom.to_string(name))
+  end
+
+  def get_field(_column, name) do
+    raise ArgumentError, "a field name is a string or an atom, not #{inspect(name)}"
+  end
+
+  @doc """
+  An array element by index, or a map value by key. Spark's `getItem`, and `col[key]`.
+
+      get_item(:tags, 0)
+      get_item(:attributes, "colour")
+
+  The key is a value: an atom is a column holding the key, anything else a literal. Arrays index
+  from 0, where `Latu.Functions.element_at/2` counts from 1. Same node as `get_field/2`; the
+  server reads the child's type.
+  """
+  @spec get_item(term(), term()) :: Plan.expression()
+  def get_item(column, key), do: Plan.extract_value(column, key)
+
+  @doc """
+  A struct with one field added or replaced. Spark's `withField`.
+
+      with_field(:address, :postcode, lit("3000"))
+
+  A dotted name reaches a nested field, `"a.b"`. The value is any expression.
+  """
+  @spec with_field(term(), String.t() | atom(), term()) :: Plan.expression()
+  defdelegate with_field(column, name, value), to: Plan
+
+  @doc """
+  A struct with fields dropped, by name. Spark's `dropFields`, which is variadic; this takes a
+  list, or one name.
+
+      drop_fields(:address, [:unit, :floor])
+
+  One `UpdateFields` node per name, nested, as PySpark builds it. An empty list is refused.
+  """
+  @spec drop_fields(term(), [String.t() | atom()] | String.t() | atom()) :: Plan.expression()
+  def drop_fields(_column, []) do
+    raise ArgumentError, "drop_fields/2 takes at least one field name"
+  end
+
+  def drop_fields(column, names) do
+    names |> List.wrap() |> Enum.reduce(Plan.to_expr(column), &Plan.drop_field(&2, &1))
+  end
+
+  # =============================================
   # Windows
   # =============================================
 

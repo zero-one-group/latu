@@ -81,7 +81,10 @@ defmodule Latu.Integration.ConnectionTest do
   test "spark_version/1 reports the server's version" do
     session = Latu.connect!(@url)
     assert {:ok, version} = Latu.spark_version(session)
-    assert version =~ ~r/^4\.2\./, "expected the 4.2 image, got #{version}"
+    # docker-compose.yml starts `apache/spark:${SPARK_VERSION:-4.2.0}`; this reads the same knob,
+    # so the Spark versions workflow can run this file against another tag.
+    expected = System.get_env("SPARK_VERSION", "4.2.0")
+    assert String.starts_with?(version, expected), "expected Spark #{expected}, got #{version}"
     Latu.disconnect(session)
   end
 

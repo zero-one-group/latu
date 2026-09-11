@@ -2389,6 +2389,61 @@ defmodule Latu.Plan do
   end
 
   @doc """
+  One value out of a nested column: a struct field by name, an array element by index, a map
+  value by key.
+
+      Plan.extract_value(:address, "city")
+      Plan.extract_value(:tags, 0)
+
+  One node, `UnresolvedExtractValue`, for all three; the server reads the child's type. Both
+  arguments go through `to_expr/1`, so an atom is a column and anything else a literal. A
+  struct field is therefore named as a string here; `Latu.Column.get_field/2` takes an atom.
+  """
+  @spec extract_value(term(), term()) :: expression()
+  def extract_value(child, extraction) do
+    {child, refs} = drain(child)
+    {extraction, more} = drain(extraction)
+    node = %Proto.Expression.UnresolvedExtractValue{child: child, extraction: extraction}
+
+    Latu.Subquery.wrap(expression({:unresolved_extract_value, node}), refs ++ more)
+  end
+
+  @doc """
+  A struct with one field added or replaced. Spark's `UpdateFields`, with a value.
+
+      Plan.with_field(:address, :postcode, 3000)
+
+  A dotted name reaches into a nested struct, as Spark's `withField` reads it. `drop_field/2`
+  is the same node with no value.
+  """
+  @spec with_field(term(), String.t() | atom(), term()) :: expression()
+  def with_field(column, name, value) do
+    {column, refs} = drain(column)
+    {value, more} = drain(value)
+
+    node = %Proto.Expression.UpdateFields{
+      struct_expression: column,
+      field_name: identifier(name, "field name"),
+      value_expression: value
+    }
+
+    Latu.Subquery.wrap(expression({:update_fields, node}), refs ++ more)
+  end
+
+  @doc "A struct with one field dropped. `UpdateFields` with no value; see `with_field/3`."
+  @spec drop_field(term(), String.t() | atom()) :: expression()
+  def drop_field(column, name) do
+    {column, refs} = drain(column)
+
+    node = %Proto.Expression.UpdateFields{
+      struct_expression: column,
+      field_name: identifier(name, "field name")
+    }
+
+    Latu.Subquery.wrap(expression({:update_fields, node}), refs)
+  end
+
+  @doc """
   Coerce the mixed list `Latu.select/2` and `Latu.agg/2` both take.
 
   A `{name, expression}` pair becomes an alias; everything else goes through `to_name/1`. A

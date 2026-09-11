@@ -154,6 +154,9 @@ defmodule Latu.Plan do
   def lit(value), do: expression({:lit, value})
   def cast(column, type), do: expression({:cast, column, type})
   def try_cast(column, type), do: expression({:try_cast, column, type})
+  def extract_value(child, extraction), do: expression({:extract_value, child, extraction})
+  def with_field(column, name, value), do: expression({:with_field, column, name, value})
+  def drop_field(column, name), do: expression({:drop_field, column, name})
   def over(function, window), do: expression({:over, function, window})
 
   # Enough of the real carrier to keep the layers above honest: a subquery is a Latu.Subquery,

@@ -71,6 +71,25 @@ jobs:
         if: failure()
         run: docker compose logs --no-color --tail=200
 
+  # The floor mix.exs promises, compiled and tested on the oldest Elixir it names. No servers
+  # and no format check: the formatter moves between versions, the library does not. What
+  # would go red here is a stdlib function newer than the floor, or a dependency raising its
+  # own. Not a required check.
+  floor:
+    name: Elixir 1.18 floor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+      - run: MIX_ENV=test mix compile --force --warnings-as-errors
+      - run: mix test
+
   # Its own job: a GitHub outage should not be able to fail `mix check.all`, and this needs no
   # BEAM. What it guards against: docs/decisions.md.
   protos:

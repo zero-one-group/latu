@@ -1,6 +1,6 @@
 # Contributing
 
-Requires Elixir ~> 1.20, Docker, `protoc`, and Python 3 for the plan oracle.
+Requires Elixir 1.20 (`.tool-versions`; the package itself runs on 1.18 or newer), Docker, `protoc`, and Python 3 for the plan oracle.
 
 ```bash
 mix deps.get

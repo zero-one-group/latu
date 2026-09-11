@@ -3,6 +3,21 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## Unreleased
+
+**Nested data.** `Latu.Column.get_field/2` and `get_item/2` read a struct field, an array
+element or a map value out of any expression, where a dotted name only ever reached a named
+column. `with_field/3` and `drop_fields/2` edit a struct in place. Two expression nodes Latu
+did not build before, `UnresolvedExtractValue` and `UpdateFields`; three goldens.
+
+**Elixir 1.18 is the floor**, down from 1.20. Nothing in the package needed the newer versions;
+`JSON` needs 1.18 and so does a dependency. CI compiles and tests the floor as its own job.
+
+**The Spark versions workflow reads in both directions.** Its goldens and its summary now run
+when the integration suite is red, which against an older server it always is, and the summary
+lists every failing test rather than the ten GitHub annotates. `spark_version/1`'s test asserts
+the version the compose file started instead of 4.2 by name.
+
 ## 0.6.1 — 2026-09-10
 
 **The `docker run` line in the README and the quick start now starts a server that stays up.**

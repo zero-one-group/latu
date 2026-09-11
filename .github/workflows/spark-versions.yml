@@ -1,6 +1,8 @@
-# The forward-compatibility run: the integration suite against a Spark newer than the one Latu
-# targets. On demand, never on a PR — red here is upstream news, not a broken change. Why there
-# is no cron, why forward and not backward, and why the goldens only report: docs/decisions.md.
+# The integration suite against a Spark other than the one Latu targets. Newer: red is upstream
+# news. Older: red is expected, and the failures are what docs/spark-versions.md reports. On
+# demand, never on a PR. The run summary carries the failing tests and the golden diffs, so the
+# log is not needed to read it. Why there is no cron and why the goldens only report:
+# docs/decisions.md.
 name: Spark versions
 
 on:
@@ -49,11 +51,30 @@ jobs:
       - run: docker compose up -d --wait
 
       # Everything but the goldens asserts: a crash or a semantic break on a newer server is a
-      # real failure. The goldens are rendering, which a new Spark is allowed to change.
-      - run: mix test --include integration
+      # real failure. The goldens are rendering, which a new Spark is allowed to change. The log
+      # is kept for the summary below: GitHub shows at most ten failure annotations per step.
+      - run: mix test --include integration 2>&1 | tee test.log
+        shell: bash
 
+      # Still runs when the suite above is red, which on an older server it always is.
       - name: Result goldens
+        if: always()
         run: LATU_GOLDEN=report mix test --include golden
+
+      - name: Failing tests
+        if: always()
+        run: |
+          {
+            echo "## Integration suite on Spark ${{ matrix.spark }}"
+            echo
+            grep -E '^[0-9]+ tests?, ' test.log || echo "No summary line: the suite did not finish."
+            echo
+            if grep -qE '^\s+[0-9]+\) test ' test.log; then
+              echo '```'
+              grep -A3 -E '^\s+[0-9]+\) test ' test.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Golden diff
         if: always()

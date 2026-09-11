@@ -28,7 +28,7 @@ def deps do
 end
 ```
 
-Requires Elixir ~> 1.20 and a Spark **4.2.0** Connect server.
+Requires Elixir 1.18 or newer and a Spark **4.2.0** Connect server.
 
 ## A server to talk to
 

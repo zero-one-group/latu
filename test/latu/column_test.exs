@@ -4,6 +4,7 @@ defmodule Latu.ColumnTest do
   import Latu.Column
   import Latu.Wire
 
+  alias Latu.Functions, as: F
   alias Latu.Session
 
   # Golden plans come from PySpark: python dev/pyspark_oracle.py --generate
@@ -148,6 +149,68 @@ defmodule Latu.ColumnTest do
       assert plain.cast_to_type == {:type_str, "string"}
       assert tried.eval_mode == :EVAL_MODE_TRY
       refute plain.eval_mode == :EVAL_MODE_TRY
+    end
+  end
+
+  describe "nested data" do
+    test "a field, an element and a map value are one node", %{session: session} do
+      df =
+        session
+        |> Latu.range(10)
+        |> Latu.select(s: F.struct([:id]), arr: F.array([:id]), m: F.create_map([lit("k"), :id]))
+        |> Latu.select(f: get_field(:s, :id), i: get_item(:arr, 0), k: get_item(:m, "k"))
+
+      assert_wire(df, "extract_value")
+    end
+
+    test "with_field carries the value", %{session: session} do
+      df =
+        session
+        |> Latu.range(10)
+        |> Latu.select(s: F.struct([:id]))
+        |> Latu.select(s: with_field(:s, "b", lit(1)))
+
+      assert_wire(df, "with_field")
+    end
+
+    test "drop_fields nests one node per name", %{session: session} do
+      df =
+        session
+        |> Latu.range(10)
+        |> Latu.select(a: :id, b: lit(1), c: lit(2))
+        |> Latu.select(s: F.struct([:a, :b, :c]))
+        |> Latu.select(s: drop_fields(:s, ["b", "c"]))
+
+      assert_wire(df, "drop_fields")
+    end
+
+    test "a field name is a name and a key is a value" do
+      assert get_field(:s, :a) == get_field(:s, "a")
+
+      {:unresolved_extract_value, by_name} = get_field(:s, :a).expr_type
+      {:unresolved_extract_value, by_column} = get_item(:m, :a).expr_type
+
+      assert %{expr_type: {:literal, _}} = by_name.extraction
+      assert %{expr_type: {:unresolved_attribute, _}} = by_column.extraction
+    end
+
+    test "drop_fields takes one name or a list, never none" do
+      assert drop_fields(:s, "a") == drop_fields(:s, ["a"])
+      assert {:update_fields, %{value_expression: nil}} = drop_fields(:s, :a).expr_type
+
+      assert_raise ArgumentError, ~r/at least one field name/, fn ->
+        apply(Latu.Column, :drop_fields, [:s, []])
+      end
+    end
+
+    test "a field name that is neither string nor atom is refused by name" do
+      assert_raise ArgumentError, ~r/field name/, fn ->
+        apply(Latu.Column, :get_field, [:s, 1])
+      end
+
+      assert_raise ArgumentError, ~r/field name/, fn ->
+        apply(Latu.Column, :with_field, [:s, 1, 2])
+      end
     end
   end
 

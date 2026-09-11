@@ -135,6 +135,7 @@ the deviation is recorded:
 - `df.alias("a")` → `Latu.as/2` (`alias` is a special form)
 - `df.show()` → `Latu.show/2`, returning `:ok` like `File.write/2`
 - `col != other` → `Latu.Column.not_equal/2`
+- `col["k"]`, `col.getField("k")` → `Latu.Column.get_item/2`, `Latu.Column.get_field/2`
 
 ## Things Latu deliberately does not do
 

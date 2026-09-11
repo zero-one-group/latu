@@ -127,6 +127,20 @@ FIXTURES: list[tuple[str, str]] = [
      'spark.range(10).select(F.col("id").isNull().alias("n"),'
      ' F.col("id").isNotNull().alias("nn"), F.col("id").isNaN().alias("nan"),'
      ' F.col("id").between(1, 5).alias("b"), F.col("id").isin([1, 2, 3]).alias("i"))'),
+    # Nested data. `getField`, `getItem` and `col[key]` are one node, UnresolvedExtractValue;
+    # `withField` and `dropFields` are UpdateFields with and without a value, one per name.
+    ("extract_value",
+     'spark.range(10).select(F.struct("id").alias("s"), F.array("id").alias("arr"),'
+     ' F.create_map(F.lit("k"), F.col("id")).alias("m"))'
+     '.select(F.col("s").getField("id").alias("f"),'
+     ' F.col("arr").getItem(0).alias("i"), F.col("m")["k"].alias("k"))'),
+    ("with_field",
+     'spark.range(10).select(F.struct("id").alias("s"))'
+     '.select(F.col("s").withField("b", F.lit(1)).alias("s"))'),
+    ("drop_fields",
+     'spark.range(10).select(F.col("id").alias("a"), F.lit(1).alias("b"), F.lit(2).alias("c"))'
+     '.select(F.struct("a", "b", "c").alias("s"))'
+     '.select(F.col("s").dropFields("b", "c").alias("s"))'),
     ("string_predicates",
      'spark.range(10).select(F.lit("abc").contains("b").alias("c"),'
      ' F.lit("abc").startswith("a").alias("s"), F.lit("abc").endswith("c").alias("e"),'
