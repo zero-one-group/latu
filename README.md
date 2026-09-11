@@ -25,11 +25,12 @@ predecessor, is Javanese for *fire*.
 
 ```elixir
 def deps do
-  [{:latu, "~> 0.6"}]
+  [{:latu, "~> 0.7"}]
 end
 ```
 
-Requires Elixir 1.18 or newer and a Spark **4.2.0** Connect server.
+Requires Elixir 1.18 or newer and a Spark **4.2.0** Connect server. Another Spark:
+[Spark versions](https://hexdocs.pm/latu/spark-versions.html).
 
 ## A server to talk to
 
@@ -214,6 +215,8 @@ reads nothing from your disk.
     not guessable from the function names, in the
     [`usage_rules`](https://github.com/ash-project/usage_rules) convention, so an agent can sync
     it into its context.
+  * [Spark versions](https://hexdocs.pm/latu/spark-versions.html). What a 4.2 client does
+    against 4.1 and 4.0, measured; 3.5, newer servers, and the managed platforms.
   * [`docs/deviations.md`](https://hexdocs.pm/latu/deviations.html). A reference: every place the
     API departs from PySpark, and why.
   * [`CONTRIBUTING.md`](https://hexdocs.pm/latu/contributing.html). The servers, the proto

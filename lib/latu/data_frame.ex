@@ -397,7 +397,9 @@ defmodule Latu.DataFrame do
   defp config_int!(configs, key) do
     case configs[key] do
       nil ->
-        raise ArgumentError, "the server does not define #{key} — is it Spark 4.2+?"
+        raise ArgumentError,
+              "the server does not define #{key}; a local relation over the cache threshold " <>
+                "needs Spark 4.1 or newer (docs/spark-versions.md)"
 
       value when is_binary(value) ->
         unit = fn suffix -> Map.fetch(@byte_units, String.downcase(String.trim(suffix))) end

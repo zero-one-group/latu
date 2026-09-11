@@ -69,6 +69,17 @@ defmodule Latu.ClientTest do
       assert message =~ "Latu sent a Relation the server does not know"
     end
 
+    test "and 4.0's two phrasings of the same thing", %{session: session} do
+      texts = ["Expected Relation to be set, but is empty.", "CATTYPE_NOT_SET not supported."]
+
+      for text <- texts do
+        refused = fn -> {:error, %GRPC.RPCError{status: 13, message: text}} end
+
+        assert {:error, %Error{message: message}} = Client.retrying("Test", session, refused)
+        assert message =~ ~r/Latu sent a (Relation|Catalog) the server does not know/
+      end
+    end
+
     test "each attempt is a retry event naming the RPC", %{session: session} do
       # A remote capture, as telemetry_test does: `:telemetry.attach/4` logs about a local
       # one. The handler is global, so it forwards this session's events alone.

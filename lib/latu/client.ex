@@ -1181,25 +1181,41 @@ defmodule Latu.Client do
 
   # Two shapes an older server answers a 4.2 client with, neither naming the cause. An unknown
   # RPC is `UNIMPLEMENTED`. An unknown proto field is worse: protobuf drops it silently, so the
-  # server sees a message with its oneof unset and reports that as its own INTERNAL_ERROR. Both
-  # keep Spark's class and message; the sentence added names what happened.
-  @unset ~r/This oneOf field in spark\.connect\.(\w+) is not set: \w+_NOT_SET/
+  # server sees a message with its oneof unset and reports that as its own error, in a phrasing
+  # that changed between 4.0 and 4.1 (measured on 4.0.4 and 4.1.3, `docs/spark-versions.md`).
+  # Both keep Spark's class and message; the sentence added names what happened.
+  @unset [
+    ~r/This oneOf field in spark\.connect\.(\w+) is not set: \w+_NOT_SET/,
+    ~r/^Expected (\w+) to be set, but is empty\.$/,
+    ~r/^(CATTYPE|RELTYPE|EXPRTYPE|COMMANDTYPE|OPTYPE)_NOT_SET not supported\.$/
+  ]
 
   defp older_server(%GRPC.RPCError{status: 12, message: message}) do
     message <> " (the server does not implement this RPC; Latu targets Spark 4.2.0)"
   end
 
   defp older_server(%GRPC.RPCError{message: message}) do
-    case Regex.run(@unset, message) do
+    case Enum.find_value(@unset, &Regex.run(&1, message)) do
       [_match, message_type] ->
         message <>
-          " (Latu sent a #{message_type} the server does not know; an older server drops an" <>
-          " unknown field rather than refusing it. Latu targets Spark 4.2.0)"
+          " (Latu sent a #{unset_type(message_type)} the server does not know; an older server" <>
+          " drops an unknown field rather than refusing it. Latu targets Spark 4.2.0)"
 
       nil ->
         message
     end
   end
+
+  # 4.0 names the oneof, not the message: `CATTYPE_NOT_SET not supported.`
+  @oneofs %{
+    "CATTYPE" => "Catalog",
+    "RELTYPE" => "Relation",
+    "EXPRTYPE" => "Expression",
+    "COMMANDTYPE" => "Command",
+    "OPTYPE" => "Plan"
+  }
+
+  defp unset_type(name), do: Map.get(@oneofs, name, name)
 
   defp info(%GRPC.RPCError{details: details}) when is_list(details) do
     Enum.flat_map(details, fn
