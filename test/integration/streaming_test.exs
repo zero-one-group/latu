@@ -192,6 +192,22 @@ defmodule Latu.Integration.StreamingTest do
     end
   end
 
+  # The gate had no live check on `get/2` or `active/1`: only `:available_now`'s drain runs in
+  # `check.all`, so a regression in decoding the manager's reply would reach `main` green. This
+  # closes that with no sleep. Finding a *running* query needs a processing-time trigger and
+  # stays `:streaming`-tagged above; a terminated query settles the decode and the not-found
+  # path on its own, because `await_termination` has already made the query done.
+  describe "a query the session has finished" do
+    test "is nil from get/2 and absent from active/1", %{session: session} do
+      frame = stream(session, bounded_source(session))
+      {:ok, query} = Latu.write_stream(frame, sink_opts(:available_now))
+      assert {:ok, true} = StreamingQuery.await_termination(query, timeout: 90_000)
+
+      assert {:ok, nil} = StreamingQuery.get(session, query.id)
+      refute Enum.any?(StreamingQuery.active!(session), &(&1.id == query.id))
+    end
+  end
+
   describe "the listener bus" do
     @describetag :streaming
 

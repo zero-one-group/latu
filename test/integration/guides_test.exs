@@ -36,7 +36,11 @@ defmodule Latu.Integration.GuidesTest do
   @illustrative [
     {"docs/guides/cookbook.md", "JDBC needs a database the test server does not have."},
     {"docs/guides/cookbook.md",
-     "A merge needs an Iceberg or Delta target, and the test server has neither."}
+     "A merge needs an Iceberg or Delta target, and the test server has neither."},
+    {"docs/guides/cookbook.md",
+     "A supervised session needs a supervision tree and a server that drops, which the guide runner has neither."},
+    {"docs/guides/cookbook.md",
+     "Recovering a query across a restart needs a restart, which the guide runner cannot stage."}
   ]
 
   # A wildcard that matched nothing would define no tests and pass in silence, which is the
