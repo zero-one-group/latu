@@ -4,7 +4,7 @@ Short recipes for things people actually do. The [quick start](quick-start.md) i
 is the reference you come back to.
 
 Every `elixir` snippet here is executed by `mix check.all`, in order, sharing one set of
-bindings. Two are not, and each says so where it stands.
+bindings. Some are not, and each says so where it stands.
 
 Where a recipe departs from PySpark, [`docs/deviations.md`](../deviations.md) has the reason.
 
@@ -367,6 +367,200 @@ ships.
 Clauses apply in the order you add them and **only the first matching clause runs**, so an
 unconditional one belongs last. `Latu.merge_with_metrics/2` is the form that tells you how many
 rows it touched.
+
+## A supervised session
+
+Latu holds no processes and manages no session lifecycle. That is the library's rule, and it
+leaves one job to you: keep a live session around, and rebuild it when the transport dies. A
+small GenServer is the whole answer.
+
+> **Not executed.** A supervised session needs a supervision tree and a server that drops, which the guide runner has neither.
+
+```elixir
+defmodule MyApp.Spark do
+  @moduledoc "Owns one `Latu.Session`, hands out a live copy, rebuilds it when the link drops."
+  use GenServer
+
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+  # The session callers run their own queries with.
+  def session, do: GenServer.call(__MODULE__, :session)
+
+  # Ask for a fresh session, passing the one that just failed. The rebuild happens once even if
+  # every caller asks at the same moment: a stale session is rebuilt only while it is still the
+  # one this process holds.
+  def refresh(stale), do: GenServer.call(__MODULE__, {:refresh, stale})
+
+  # The two error shapes that mean the session itself is gone. `status: 14` is Spark's
+  # UNAVAILABLE, and it reaches you here only after the session's retry policy gave up.
+  def reconnect?(%Latu.Error{kind: :connect}), do: true
+  def reconnect?(%Latu.Error{kind: :rpc, status: 14}), do: true
+  def reconnect?(%Latu.Error{}), do: false
+
+  @impl true
+  def init(opts) do
+    state = %{url: Keyword.fetch!(opts, :url), opts: Keyword.get(opts, :connect, []), session: nil}
+    {:ok, state, {:continue, :connect}}
+  end
+
+  @impl true
+  def handle_continue(:connect, state) do
+    {:noreply, %{state | session: Latu.connect!(state.url, state.opts)}}
+  end
+
+  @impl true
+  def handle_call(:session, _from, state), do: {:reply, state.session, state}
+
+  def handle_call({:refresh, stale}, _from, %{session: current} = state) do
+    if current && current.session_id == stale.session_id do
+      Latu.disconnect(stale)
+      fresh = Latu.connect!(state.url, state.opts)
+      {:reply, fresh, %{state | session: fresh}}
+    else
+      {:reply, current, state}
+    end
+  end
+
+  @impl true
+  def terminate(_reason, %{session: %Latu.Session{} = session}), do: Latu.disconnect(session)
+  def terminate(_reason, _state), do: :ok
+end
+```
+
+To use it, get a session with `MyApp.Spark.session/0`, run your query, and check any error
+against `reconnect?/1`. When it says yes, hand the session to `MyApp.Spark.refresh/1` and try
+again with the session it returns. Everything else is a real error the query has to answer for.
+
+You might reach for a monitor on the channel process instead, and rebuild when it goes down. Do
+not. `session.channel.adapter_payload.conn_pid` is the gRPC adapter's own shape, not Latu's, so
+nothing keeps it stable across versions. It is `nil` between a disconnect and the next connect.
+The adapter already retries the socket for you, on its own backoff, so a monitor would fire on a
+blip it is about to heal. The signal you can trust is an error from a call you made. Match on
+`reconnect?/1` and rebuild then.
+
+A rebuilt session is a new session on the server, with a new id. Temp views, cached plans, and
+anything else keyed on the old session are gone with it. Register what a fresh session needs
+again, or keep that state in a table where a reconnect cannot reach it.
+
+## A supervised query
+
+A streaming query is the other thing that outlives your process, and it needs the same care from
+the other side. `Latu.write_stream/2` starts one on the server and hands back a handle. If your
+process crashes and restarts, the query keeps running and the handle is gone. Recover it rather
+than start a second one.
+
+> **Not executed.** Recovering a query across a restart needs a restart, which the guide runner cannot stage.
+
+```elixir
+defmodule MyApp.Rollups do
+  @moduledoc "Owns one streaming query. After a restart it recovers the running one, not a copy."
+  use GenServer
+
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @impl true
+  def init(opts) do
+    state = %{
+      session: MyApp.Spark.session(),
+      frame: Keyword.fetch!(opts, :frame),
+      write: Keyword.fetch!(opts, :write),
+      query: nil
+    }
+
+    {:ok, state, {:continue, :ensure}}
+  end
+
+  @impl true
+  def handle_continue(:ensure, state) do
+    {:noreply, %{state | query: recover(state.session) || start(state)}}
+  end
+
+  # A query survives the process that started it, so after a crash the old one is still on the
+  # server. `get/2` hands back a handle with the *current* run id. A remembered run id goes
+  # stale when a query restarts from its checkpoint, and the server refuses a command that
+  # carries the old one, so recover the handle rather than reuse a saved struct.
+  defp recover(session) do
+    with id when is_binary(id) <- remembered_id(),
+         {:ok, %Latu.StreamingQuery{} = query} <- Latu.StreamingQuery.get(session, id) do
+      query
+    else
+      _ -> nil
+    end
+  end
+
+  defp start(state) do
+    {:ok, query} = Latu.write_stream(state.frame.(state.session), state.write)
+    remember_id(query.id)
+    query
+  end
+
+  # The id is stable across restarts from the checkpoint, so persist it where it outlives the
+  # process: a file, a table, your own config. A file is shown here for one moving part.
+  defp remembered_id do
+    case File.read("priv/rollups.qid") do
+      {:ok, id} -> String.trim(id)
+      {:error, _} -> nil
+    end
+  end
+
+  defp remember_id(id), do: File.write!("priv/rollups.qid", id)
+end
+```
+
+Start it under your supervisor with two options: `:frame`, a one-argument function that builds
+the streaming frame from a session, and `:write`, the `write_stream/2` options with a
+`:checkpoint_location` set. The checkpoint is what lets Spark resume the query after a restart,
+and it is what makes the id worth remembering.
+
+This module does not stop the query when it terminates, on purpose. The query is meant to
+outlive a crash, which is the reason to recover it at all. Stop it from somewhere with a longer
+life than one process, or on a deliberate shutdown, with `Latu.StreamingQuery.stop/1`. And its
+failure is asynchronous: a query can die on the server long after it started, and nothing here
+raises when it does. Watch for that with `Latu.StreamingQuery.await_termination/2` in a task, or
+poll `Latu.StreamingQuery.exception/1`.
+
+## A function Latu has no wrapper for
+
+`Latu.Functions` wraps about five hundred of Spark's functions, and every Spark release adds
+more. When there is no wrapper, call the function by name. `luhn_check` is one Latu does not
+wrap, and it is a Spark built-in all the same:
+
+```elixir
+{:ok, [%{valid: true, mistyped: false}]} =
+  session
+  |> Latu.range(1)
+  |> Latu.select(
+    valid: fun("luhn_check", [lit("79927398713")]),
+    mistyped: fun("luhn_check", [lit("79927398714")])
+  )
+  |> Latu.collect()
+```
+
+`fun/3` builds an ordinary column, so it composes with everything else and takes `distinct:
+true` where you would write `count(DISTINCT x)`. `expr/1` takes the same call as SQL text, which
+reads better once a few operators are in it:
+
+```elixir
+{:ok, [%{ok: true}]} =
+  session
+  |> Latu.range(1)
+  |> Latu.select(ok: expr("luhn_check('79927398713')"))
+  |> Latu.collect()
+```
+
+`Latu.sql/3` goes all the way to a whole query, for when the expression is the least of what you
+are writing:
+
+```elixir
+{:ok, df} = Latu.sql(session, "SELECT luhn_check('79927398713') AS ok")
+{:ok, [%{ok: true}]} = Latu.collect(df)
+```
+
+Three rungs, and you climb only as far as you need. `Latu.Column.fun/3` for one call that stays
+a column. `Latu.Column.expr/1` when SQL reads more clearly than the builders. `Latu.sql/3` when
+the query is the point. `fun/3` is the one you reach for most: latu_ml's whole `Latu.ML.Functions`
+is two of them, `vector_to_array` and `array_to_vector`, each a single `fun/3` call that never
+needed a wrapper of its own.
 
 ## Where to go next
 
