@@ -8,7 +8,9 @@ defmodule Latu.MixProject do
     [
       app: :latu,
       version: @version,
-      elixir: "~> 1.20",
+      # 1.18 is the floor: `JSON` is stdlib from there, and the `googleapis` dep asks for it too.
+      # CI compiles and tests the floor beside the pinned version (.github/workflows/ci.yml).
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       # Enforced here rather than per-run with `--force --warnings-as-errors`: any file the
       # incremental compiler touches is held to it, and the checks stop paying to recompile

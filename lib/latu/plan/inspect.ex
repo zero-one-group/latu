@@ -50,6 +50,19 @@ defmodule Latu.Plan.Inspect do
     "#{describe(expr)} AS #{Enum.join(names, ", ")}"
   end
 
+  # Spark's own syntax for both: `s[key]` reads a field, an element or a map value, and
+  # `withField`/`dropFields` have no SQL spelling, so they read as the verbs that built them.
+  def describe({:unresolved_extract_value, %{child: child, extraction: extraction}}) do
+    "#{describe(child)}[#{describe(extraction)}]"
+  end
+
+  def describe({:update_fields, %{struct_expression: target, field_name: name} = update}) do
+    case update.value_expression do
+      nil -> "drop_field(#{describe(target)}, #{Kernel.inspect(name)})"
+      value -> "with_field(#{describe(target)}, #{Kernel.inspect(name)}, #{describe(value)})"
+    end
+  end
+
   def describe({:unresolved_function, %{function_name: name, arguments: [left, right]}})
       when name in @operators do
     "(#{describe(left)} #{name} #{describe(right)})"

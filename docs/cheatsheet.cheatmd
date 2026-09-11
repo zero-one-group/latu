@@ -225,6 +225,15 @@ Called qualified, the way `Enum` is.
 | `rlike/2` | Spark's `rlike`. |
 | `starts_with/2` | Spark's `startsWith`. |
 
+### Nested data
+
+| | |
+| --- | --- |
+| `drop_fields/2` | A struct with fields dropped, by name. |
+| `get_field/2` | A struct field by name. |
+| `get_item/2` | An array element by index, or a map value by key. |
+| `with_field/3` | A struct with one field added or replaced. |
+
 ### Windows
 
 | | |

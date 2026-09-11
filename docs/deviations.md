@@ -49,6 +49,14 @@ function. Named because Latu does not shadow `Kernel`'s operators, and never wil
 qualified call is possible — hence the underscore. Not the same mechanism as `alias`,
 which is a special form and *can* be defined. Never shadowed (`CLAUDE.md`).
 
+### `col["k"]`, `col.k`, `col.getItem(k)`, `col.getField("k")` → `get_item/2` and `get_field/2`
+
+Four PySpark spellings of one node, `UnresolvedExtractValue`; `__getitem__` and `__getattr__`
+are Python syntax Elixir has no counterpart for. `Latu.Column.get_field/2` takes a name, so an
+atom and a string both mean the field of that name. `Latu.Column.get_item/2` takes a value, so
+an atom is a column holding the key, as in every other operand position. Explorer spells the
+struct case `field/2`; Spark's name wins, as `CLAUDE.md` orders it.
+
 ### `F.when(c, v).otherwise(x)` → `when_/2,3` and `otherwise/2`
 
 `when` is an **operator**, not a special form: unlike `alias` it is a *syntax* error to define, so
@@ -135,6 +143,11 @@ no collisions.
 ### `F.coalesce(a, b, c)` — variadic → `F.coalesce([a, b, c])` — a list
 
 Elixir has no varargs, and a list composes with `Enum`. Same reasoning as `all/1` and `any/1`.
+
+### `col.dropFields("a", "b")` — variadic → `drop_fields/2` — a list
+
+The same list rule as `F.coalesce`, and one name is accepted bare. The plan is PySpark's: one
+`UpdateFields` per name, nested. An empty list is refused, as PySpark refuses it.
 
 ### `F.round(col, scale=None)` → `round/1` and `round/2`
 

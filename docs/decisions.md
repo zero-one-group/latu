@@ -1461,6 +1461,9 @@ question, not a correctness one.
 
 ## 2026-09-08 — Newer Spark is tested, older Spark is not, and the result goldens report there
 
+*Superseded in part on 2026-09-11: the same run now also points backward, to feed
+`docs/spark-versions.md`. The support claim is still 4.2.0.*
+
 Latu targets 4.2.0 and the README says so. Testing 3.5/4.0/4.1 would not verify that claim, it
 would make a new one: `ChunkedCachedLocalRelation`, `zip_with_index`, the geometry refusals and
 `time` in the decodable set are 4.1+ or 4.2+ surface, so a backward matrix buys a support
@@ -1668,3 +1671,37 @@ makes for a response arm.
 is the server's business, and a test that waits on it does not belong in a gate on `main`
 (S-D7's reasoning). What gates the bus is the offline state-machine tests: the ack latch, the
 emit-and-count, and both halves of the silence policy.
+
+## 2026-09-11 — The versions run points both ways, and its summary replaces the log
+
+The 2026-09-08 entry above declined a backward matrix because it would make a support claim.
+That still holds. What changed is the question: `docs/spark-versions.md` needs to say what a 4.2
+client does against 4.0 and 4.1, measured, and the only instrument for that is the same
+workflow with an older tag. Red there is the expected result and the page's content, not a
+support promise. The 4.2.0 claim does not move.
+
+The first backward run (4.0.4 and 4.1.3, 2026-09-11) showed two things about the instrument.
+The goldens step was skipped whenever the integration suite failed, which against an older
+server it always does, so the run reported nothing about rendering. It now runs regardless.
+And GitHub annotates at most ten failures per step, so the two legs showed ten each and
+different tens, which read as two different failure sets when it was one truncated list twice.
+The suite's output is kept and every failing test goes into the run summary, with the closing
+`N tests, M failures` line. Reading the log is no longer needed.
+
+`spark_version/1`'s integration test asserted `4.2` by name, which made it fail on every other
+tag by design. It now reads `SPARK_VERSION`, the same knob `docker-compose.yml` reads, so one
+value moves both. A default of `4.2.0` keeps `mix check.all` unchanged.
+
+## 2026-09-11 — Elixir 1.18 is the floor
+
+`mix.exs` said `~> 1.20` because that is what the maintainer runs, not because anything needed
+it. A scan of every stdlib call in `lib/`, `test/` and `dev/` found nothing newer than 1.14
+except `JSON`, which is 1.18, and the `googleapis` dependency asks for 1.18 as well. So 1.18 is
+the lowest pin that resolves, and it is the one the package promises. `.tool-versions` stays at
+1.20: the type checker and the formatter run there, and `mix check.all` is defined against it.
+
+A `floor` CI job compiles with warnings as errors and runs the offline suite on 1.18 / OTP 27,
+so the promise is tested rather than declared. It runs no servers and no `mix format`: the
+formatter changes between versions, and a format diff on the floor is not a defect in the
+library. It is not a required check. `latu_ml` carries the same pin and gets the same change at
+its next release.

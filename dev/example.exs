@@ -132,6 +132,19 @@ session
 |> Latu.select(s: fun("soundex", [F.upper("smith")]))
 |> Latu.show()
 
+# Nested data: `get_field` reads a struct field out of any expression, `get_item` an array
+# element or a map value, and `with_field`/`drop_fields` edit a struct in place.
+session
+|> Latu.range(3)
+|> Latu.select(s: F.struct([:id]), arr: F.array([:id, add(:id, 1)]))
+|> Latu.select(
+  id: get_field(:s, :id),
+  second: get_item(:arr, 1),
+  grown: with_field(:s, :label, lit("row")),
+  shrunk: drop_fields(with_field(:s, :label, lit("row")), :label)
+)
+|> Latu.show()
+
 # Results come out as Elixir data. `collect` gives maps with atom keys; `count`, `take` and
 # `first` are the actions PySpark makes them; `to_explorer` hands the columns to Explorer
 # whole, bounded at 100k rows unless told otherwise.

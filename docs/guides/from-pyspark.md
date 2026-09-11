@@ -141,6 +141,7 @@ for it.
 | `F.col("a")` | `:a`, or `col(:a)` |
 | `F.expr("a + 1")` | `expr("a + 1")` |
 | `F.lit(1)` | `lit(1)`, or just `1` |
+| `F.col("s")["k"]`, `F.col("s").getField("k")` | `get_item(:s, "k")`, `get_field(:s, :k)` |
 
 **`df.na` and `df.stat` have no namespace here.** PySpark's six `DataFrameStatFunctions` methods
 and four `na` methods are all verbs on `Latu`. A namespace whose only job is grouping is a
