@@ -70,6 +70,15 @@ defmodule Latu.Client.ArtifactTest do
     assert [%{name: "jars/udfs.jar"}] = batch.artifacts
   end
 
+  # PySpark joins the prefix to the absolute destination with no separator of its own, so the
+  # name reads `forward_to_fs/data/x` and the server puts the leading `/` back.
+  test "a filesystem copy is the prefix followed by the absolute path", %{session: session} do
+    assert [%Proto.AddArtifactsRequest{payload: {:batch, batch}}] =
+             Client.artifact_requests(session, [{"/data/x.parquet", "PAR1"}], "forward_to_fs")
+
+    assert [%{name: "forward_to_fs/data/x.parquet"}] = batch.artifacts
+  end
+
   test "a large blob keeps the prefix through the chunked path", %{session: session} do
     blob = :crypto.strong_rand_bytes(@chunk + 1)
 

@@ -5,6 +5,19 @@ remove; each such change is listed here with the migration in one line.
 
 ## Unreleased
 
+**`Latu.copy_to_fs/3`.** Bytes to a file on the cluster's filesystem, PySpark's
+`copyFromLocalToFs`: `AddArtifacts` under the `forward_to_fs` prefix, written by the server with
+Hadoop's `FileSystem` onto its default filesystem, overwriting. The route for handing Explorer a
+file when the server's disk is not yours, and the durable alternative to `create_dataframe/3`.
+A local-disk destination needs `spark.sql.artifact.copyFromLocalToFs.allowDestLocal` on the
+session or the server.
+
+**An error the status cut at 2048 characters arrives whole.** Latu fetches the detail for that
+one case before returning the error, so `message` is complete and `causes` is filled; every
+other error keeps `error_details/2` as the explicit call.
+
+**A Livebook notebook**, `notebooks/quick_start.livemd`, and a "Run in Livebook" badge.
+
 **Nested data.** `Latu.Column.get_field/2` and `get_item/2` read a struct field, an array
 element or a map value out of any expression, where a dotted name only ever reached a named
 column. `with_field/3` and `drop_fields/2` edit a struct in place. Two expression nodes Latu

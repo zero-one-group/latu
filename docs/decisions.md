@@ -841,6 +841,9 @@ alone — which is why it is public.
 
 ## 2026-09-02 — Spark's structured error detail arrives free; `FetchErrorDetails` is explicit (M12.3)
 
+*Narrowed on 2026-09-11: the fetch is automatic for the one error whose message the status cut,
+and explicit for every other.*
+
 elixir-grpc already decodes `grpc-status-details-bin` into `GRPC.RPCError.details`, and
 `Google.Rpc.ErrorInfo` ships in `deps/googleapis`, so the error class, SQLSTATE, JVM class
 hierarchy, message parameters, stack trace and `errorId` cost no dependency, no proto work and no
@@ -1326,6 +1329,8 @@ which also fails a malformed schema at `create_dataframe/3` rather than at the f
 
 ## 2026-09-07 — `error_details/2` restores the message the status abbreviated
 
+*Extended on 2026-09-11: an error that arrives cut is restored before the caller sees it.*
+
 `SparkConnectService.extractErrorMessage` is `Utils.abbreviate(getMessage, 2048)`, so a long
 analysis message reaches `%Latu.Error{}` cut to 2048 characters; `FetchErrorDetails` carries it
 whole, and PySpark's `convert_exception` reads it from there. The explicit call now does the
@@ -1705,3 +1710,63 @@ so the promise is tested rather than declared. It runs no servers and no `mix fo
 formatter changes between versions, and a format diff on the floor is not a defect in the
 library. It is not a required check. `latu_ml` carries the same pin and gets the same change at
 its next release.
+
+## 2026-09-11 — A cut message is fetched whole before the caller sees it
+
+`SparkConnectService.extractErrorMessage` is `Utils.abbreviate(getMessage, 2048)`. For an
+analysis error naming a long expression, what reaches `%Latu.Error{}` is the first 2045
+characters and `...`, and a first-time user has no reason to know `Latu.error_details/2` would
+finish the sentence. PySpark enriches every error; the 2026-09-02 call declined that because an
+expected refusal should not cost a round trip. Both hold, and the line between them is the cut
+itself.
+
+So `Latu.Client` fetches the detail, once and unasked, when a terminal `:rpc` error has an
+`error_id` and a message of at least 2048 bytes ending in `...`. The test is on bytes rather
+than graphemes because Java's length counts UTF-16 units and a multibyte message would
+otherwise slip under it; a message that is naturally that long and ends in `...` costs one
+wasted RPC and nothing else. The fetch is best effort, so a failure to fetch returns the error
+as it arrived, and it never fires for `FetchErrorDetails`' own failure. It sits at the two
+places a terminal error leaves the client: the end of a unary RPC's retry loop and an
+execution's `:fail`. `error_details/2` afterwards is a wasted round trip and returns what was
+fetched, as before.
+
+## 2026-09-11 — `copy_to_fs/3` copies bytes onto the driver's default filesystem
+
+PySpark's `copyFromLocalToFs` is `AddArtifacts` under the `forward_to_fs` prefix, and the
+server's handling is read off Spark 4.2.0's source rather than probed, since it is presence
+semantics: `SparkConnectAddArtifactsHandler.flushStagedArtifacts` routes the prefix to
+`ArtifactManager.uploadArtifactToFs`, which rebuilds the destination as `/` plus the rest of
+the name, resolves it against the driver's default filesystem, and calls
+`FileSystem.copyFromLocalFile(delSrc = false, overwrite = true)`. Nothing is kept in the
+session and the artifact rules do not apply, so the same path can be written twice and
+`ARTIFACT_ALREADY_EXISTS` cannot happen.
+
+**Bytes, not a path**, as `add_jar/3` is and for the same reason: Latu does no local file IO,
+and a path form would be the first place it did. The name drops "from local" because there is no
+local; `docs/deviations.md` records it. The destination keeps PySpark's two refusals as one
+`ArgumentError`: absolute, and no scheme, because a scheme cannot survive the server's
+reconstruction and the default filesystem is the only one reachable.
+
+**A local-disk destination is refused by the server** unless
+`spark.sql.artifact.copyFromLocalToFs.allowDestLocal` is true (the legacy
+`spark.connect.copyFromLocalToFs.allowDestLocal` also counts), read from the session's SQL conf
+at the time of the copy. The reason is the server's own: a client could otherwise overwrite any
+file the driver can. The compose servers have a local default filesystem, so the integration
+test sets the conf on its own session and the refusal test is the session that does not. A
+cluster whose default filesystem is HDFS or object storage needs nothing, which is the
+deployment the verb is for.
+
+What this is the answer to: 0.6.1's guide note that `Latu.write/2`'s path and Explorer's path
+name different disks. `Explorer.DataFrame.dump_parquet!` → `copy_to_fs/3` → `Latu.read/3` hands
+a frame over as a durable file with no shared disk, and unlike `create_dataframe/3` it leaves
+something a later session can read.
+
+## 2026-09-11 — The quick start is also a Livebook notebook, gated but not a page
+
+`notebooks/quick_start.livemd` is the quick start's steps with a `Kino.Input` for the URL and
+frames rendered in place; a "Run in Livebook" badge on the README opens it. It is not an ExDoc
+extra, though ExDoc would render one: the standing decline of any further guide holds, and a
+notebook page would be a fifth guide saying what the first one says. It is gated as the other
+prose is: `examples_test.exs`'s corpus now includes `*.livemd`, so every cell parses and every
+`Latu.` call resolves at its arity. Its cells are not executed by the suite, since `Mix.install`
+cannot run inside a Mix project; the quick start guide, which it mirrors, is.

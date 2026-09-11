@@ -41,6 +41,34 @@ defmodule Latu.ClientTest do
       assert {:error, %Error{status: 3}} = Client.retrying("Test", session, refused)
     end
 
+    # What an older server answers a 4.2 client with, measured on 4.1.3 (2026-09-11): an RPC it
+    # lacks is UNIMPLEMENTED, and a plan node it lacks is dropped by protobuf and reported as
+    # its own INTERNAL_ERROR. Both messages gain the cause; neither loses Spark's text.
+    test "an RPC the server lacks says so", %{session: session} do
+      missing = "Method not found: spark.connect.SparkConnectService/GetStatus"
+      refused = fn -> {:error, %GRPC.RPCError{status: 12, message: missing}} end
+
+      assert {:error, %Error{status: 12, message: message}} =
+               Client.retrying("GetStatus", session, refused)
+
+      assert message =~ missing
+      assert message =~ "does not implement this RPC"
+    end
+
+    test "a plan node the server dropped names the node", %{session: session} do
+      unset =
+        "[INTERNAL_ERROR] This oneOf field in spark.connect.Relation is not set: " <>
+          "RELTYPE_NOT_SET SQLSTATE: XX000"
+
+      refused = fn -> {:error, %GRPC.RPCError{status: 13, message: unset}} end
+
+      assert {:error, %Error{status: 13, message: message}} =
+               Client.retrying("Test", session, refused)
+
+      assert message =~ unset
+      assert message =~ "Latu sent a Relation the server does not know"
+    end
+
     test "each attempt is a retry event naming the RPC", %{session: session} do
       # A remote capture, as telemetry_test does: `:telemetry.attach/4` logs about a local
       # one. The handler is global, so it forwards this session's events alone.

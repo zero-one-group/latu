@@ -31,12 +31,14 @@ defmodule Latu.Error do
     * `stacktrace` — the server's stack trace as one string, when the server was configured to
       send one. **Not** in `message/1`: a JVM trace is not what you want in a REPL, and it is
       one field away when you do.
-    * `error_id` — the handle `Latu.error_details/2` fetches the full cause chain with.
+    * `error_id` — the handle `Latu.error_details/2` fetches the full cause chain with. When
+      the status message was abbreviated, Latu has already used it: see `causes`.
     * `retry_delay` — milliseconds the server asked the client to wait before trying again,
       when it attached a `RetryInfo`; `nil` otherwise. Anything carrying one is retried.
-    * `causes` — only populated by `Latu.error_details/2`. One entry per exception in the
-      chain, root cause last. The same call restores a `message` the server abbreviated to
-      2048 characters on the wire.
+    * `causes` — one entry per exception in the chain, root cause last. Populated by
+      `Latu.error_details/2`, and without a call when the server abbreviated the `message` to
+      2048 characters on the wire: Latu fetches the detail then, once, and the `message` you
+      see is the whole one.
 
   `status` and `details` are `GRPC.RPCError`'s, `:rpc` only; `details` keeps the raw trailer
   in case something Latu does not read is in it.

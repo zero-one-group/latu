@@ -84,7 +84,9 @@ A `%Latu.Error{}` from the server carries Spark's own structured detail, with no
     error.parameters   #=> %{"objectName" => "`nope`", ...}
 
 **Match on `error_class`, not on the message.** `Latu.error_details/2` fetches the full cause
-chain when you need it; it is a round trip, so it is a call rather than automatic.
+chain when you need it; it is a round trip, so it is a call rather than automatic. The one
+exception: a message the server cut at 2048 characters arrives whole, because Latu fetched the
+detail for that error already.
 
 ## Session config: three reads, and they are not the same read
 

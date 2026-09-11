@@ -84,18 +84,28 @@ defmodule Latu.Integration.ErrorsTest do
       assert Enum.all?(filled.causes, &is_list(&1.stacktrace))
     end
 
-    test "restores a message the status abbreviated to 2048 characters", %{session: session} do
-      # The gRPC status message is `Utils.abbreviate(getMessage, 2048)`; the detail is whole.
+    # The gRPC status message is `Utils.abbreviate(getMessage, 2048)`; the detail is whole, and
+    # an error that arrives cut is the one case Latu fetches it for without being asked.
+    test "a message the status abbreviated arrives whole, with its causes", %{session: session} do
       long = String.duplicate("x", 3000)
 
       {:error, error} =
         session |> Latu.range(1) |> Latu.select(Latu.Column.col(long)) |> Latu.collect()
 
-      assert String.length(error.message) == 2048
-      assert String.ends_with?(error.message, "...")
+      assert error.message =~ long
+      refute String.ends_with?(error.message, "...")
+      assert [_ | _] = error.causes
 
-      assert {:ok, filled} = Latu.error_details(session, error)
-      assert filled.message =~ long
+      # The server has forgotten the id by now; the explicit call keeps what was fetched.
+      assert {:ok, again} = Latu.error_details(session, error)
+      assert again.message == error.message
+      assert again.causes == error.causes
+    end
+
+    test "a short message is not fetched for", %{session: session} do
+      {:error, error} = session |> Latu.range(5) |> Latu.select(:nope) |> Latu.collect()
+
+      assert error.causes == []
     end
 
     test "the original error is unchanged apart from the causes", %{session: session} do
