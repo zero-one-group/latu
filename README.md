@@ -9,7 +9,7 @@
   <a href="https://hex.pm/packages/latu"><img alt="Hex version" src="https://img.shields.io/hexpm/v/latu.svg"></a>
   <a href="https://hexdocs.pm/latu"><img alt="Hexdocs" src="https://img.shields.io/badge/hex-docs-blue.svg"></a>
   <a href="https://github.com/zero-one-group/latu/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/hexpm/l/latu.svg"></a>
-  <a href="https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fzero-one-group%2Flatu%2Fblob%2Fmain%2Fnotebooks%2Fquick_start.livemd"><img alt="Run in Livebook" src="https://livebook.dev/badge/v1/blue.svg"></a>
+  <a href="https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2Fzero-one-group%2Flatu%2Fblob%2Fmain%2Fnotebooks%2Fquick_start.livemd"><img alt="Run in Livebook" src="https://img.shields.io/badge/Run_in-Livebook-blue.svg"></a>
 </p>
 
 A native Elixir DataFrame API for Apache Spark, over [Spark
