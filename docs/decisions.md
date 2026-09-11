@@ -1555,7 +1555,7 @@ cache refuses a fit rather than dropping a model. *(The bound is the session; se
 And `interrupt_all` does stop streaming queries, which makes it the session-wide kill and a
 hazard for anyone interrupting a batch query in a session that also streams.
 
-Scope, milestones and the open questions are in the project's `latu-streaming-roadmap.md`.
+What the probes measured is the project's `latu-streaming-notes.md`.
 
 ## 2026-09-09 — Streaming S1: what the code settled
 
