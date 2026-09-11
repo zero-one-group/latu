@@ -377,10 +377,37 @@ defmodule Latu.DataFrame do
           "a schema is a string — DDL or Spark's JSON schema form — not #{inspect(schema)}"
   end
 
+  # A bytes conf comes back as Spark's own string for it, which on 4.2.0 is a bare count and on
+  # 4.1 carries the unit (`3221225472b`). Spark's `JavaUtils.byteStringAs` suffixes, in bytes.
+  @byte_units %{
+    "" => 1,
+    "b" => 1,
+    "k" => 1024,
+    "kb" => 1024,
+    "m" => 1024 ** 2,
+    "mb" => 1024 ** 2,
+    "g" => 1024 ** 3,
+    "gb" => 1024 ** 3,
+    "t" => 1024 ** 4,
+    "tb" => 1024 ** 4,
+    "p" => 1024 ** 5,
+    "pb" => 1024 ** 5
+  }
+
   defp config_int!(configs, key) do
     case configs[key] do
-      value when is_binary(value) -> String.to_integer(value)
-      nil -> raise ArgumentError, "the server does not define #{key} — is it Spark 4.2+?"
+      nil ->
+        raise ArgumentError, "the server does not define #{key} — is it Spark 4.2+?"
+
+      value when is_binary(value) ->
+        unit = fn suffix -> Map.fetch(@byte_units, String.downcase(String.trim(suffix))) end
+
+        with {count, suffix} <- Integer.parse(value),
+             {:ok, multiplier} <- unit.(suffix) do
+          count * multiplier
+        else
+          _ -> raise ArgumentError, "the server's #{key} is #{inspect(value)}, not a byte count"
+        end
     end
   end
 

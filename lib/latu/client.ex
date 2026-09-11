@@ -1174,7 +1174,31 @@ defmodule Latu.Client do
   @retry_info_url "type.googleapis.com/google.rpc.RetryInfo"
 
   defp rpc_error(%GRPC.RPCError{} = error) do
-    Error.new(:rpc, error.message, [status: error.status, details: error.details] ++ info(error))
+    fields = [status: error.status, details: error.details] ++ info(error)
+
+    Error.new(:rpc, older_server(error), fields)
+  end
+
+  # Two shapes an older server answers a 4.2 client with, neither naming the cause. An unknown
+  # RPC is `UNIMPLEMENTED`. An unknown proto field is worse: protobuf drops it silently, so the
+  # server sees a message with its oneof unset and reports that as its own INTERNAL_ERROR. Both
+  # keep Spark's class and message; the sentence added names what happened.
+  @unset ~r/This oneOf field in spark\.connect\.(\w+) is not set: \w+_NOT_SET/
+
+  defp older_server(%GRPC.RPCError{status: 12, message: message}) do
+    message <> " (the server does not implement this RPC; Latu targets Spark 4.2.0)"
+  end
+
+  defp older_server(%GRPC.RPCError{message: message}) do
+    case Regex.run(@unset, message) do
+      [_match, message_type] ->
+        message <>
+          " (Latu sent a #{message_type} the server does not know; an older server drops an" <>
+          " unknown field rather than refusing it. Latu targets Spark 4.2.0)"
+
+      nil ->
+        message
+    end
   end
 
   defp info(%GRPC.RPCError{details: details}) when is_list(details) do

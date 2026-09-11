@@ -1,8 +1,8 @@
 # The integration suite against a Spark other than the one Latu targets. Newer: red is upstream
 # news. Older: red is expected, and the failures are what docs/spark-versions.md reports. On
-# demand, never on a PR. The run summary carries the failing tests and the golden diffs, so the
-# log is not needed to read it. Why there is no cron and why the goldens only report:
-# docs/decisions.md.
+# demand, never on a PR. The run summary carries the failing tests and the golden diffs, and the
+# same text is in each summary step's log, which is what `gh run view --log` can reach. Why
+# there is no cron and why the goldens only report: docs/decisions.md.
 name: Spark versions
 
 on:
@@ -74,7 +74,7 @@ jobs:
               grep -A3 -E '^\s+[0-9]+\) test ' test.log
               echo '```'
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Golden diff
         if: always()
@@ -96,7 +96,7 @@ jobs:
             if [ "$changed" -eq 0 ]; then
               echo "Identical to the committed goldens."
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Spark logs
         if: failure()
