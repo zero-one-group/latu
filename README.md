@@ -25,7 +25,7 @@ predecessor, is Javanese for *fire*.
 
 ```elixir
 def deps do
-  [{:latu, "~> 0.6"}]
+  [{:latu, "~> 0.7"}]
 end
 ```
 

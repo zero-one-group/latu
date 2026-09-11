@@ -3,14 +3,12 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
-## Unreleased
+## 0.7.0 — 2026-09-11
 
-**A Spark versions page**, `docs/spark-versions.md`: what a 4.2 client does against 4.1.3 and
-4.0.4, measured by the integration suite, plus 3.5, newer servers and the managed platforms'
-URL shapes. Two things the runs changed in Latu. A bytes conf with a unit suffix, which is how
-4.1 reports `localRelationSizeLimit`, is parsed rather than crashed on. And the two ways an
-older server refuses a 4.2 client, `UNIMPLEMENTED` for an RPC it lacks and an unset-oneof
-`INTERNAL_ERROR` for a plan node protobuf dropped, now carry a sentence naming the cause.
+**Nested data.** `Latu.Column.get_field/2` and `get_item/2` read a struct field, an array
+element or a map value out of any expression, where a dotted name only ever reached a named
+column. `with_field/3` and `drop_fields/2` edit a struct in place. Two expression nodes Latu
+did not build before, `UnresolvedExtractValue` and `UpdateFields`; three goldens.
 
 **`Latu.copy_to_fs/3`.** Bytes to a file on the cluster's filesystem, PySpark's
 `copyFromLocalToFs`: `AddArtifacts` under the `forward_to_fs` prefix, written by the server with
@@ -23,20 +21,19 @@ session or the server.
 one case before returning the error, so `message` is complete and `causes` is filled; every
 other error keeps `error_details/2` as the explicit call.
 
-**A Livebook notebook**, `notebooks/quick_start.livemd`, and a "Run in Livebook" badge.
-
-**Nested data.** `Latu.Column.get_field/2` and `get_item/2` read a struct field, an array
-element or a map value out of any expression, where a dotted name only ever reached a named
-column. `with_field/3` and `drop_fields/2` edit a struct in place. Two expression nodes Latu
-did not build before, `UnresolvedExtractValue` and `UpdateFields`; three goldens.
-
 **Elixir 1.18 is the floor**, down from 1.20. Nothing in the package needed the newer versions;
 `JSON` needs 1.18 and so does a dependency. CI compiles and tests the floor as its own job.
 
-**The Spark versions workflow reads in both directions.** Its goldens and its summary now run
-when the integration suite is red, which against an older server it always is, and the summary
-lists every failing test rather than the ten GitHub annotates. `spark_version/1`'s test asserts
-the version the compose file started instead of 4.2 by name.
+**A Spark versions page**, `docs/spark-versions.md`: what a 4.2 client does against 4.1.3 and
+4.0.4, measured by the integration suite, plus 3.5, newer servers and the managed platforms'
+URL shapes. Two things the runs changed in Latu. A bytes conf with a unit suffix, which is how
+4.1 reports `localRelationSizeLimit`, is parsed rather than crashed on. And the two ways an
+older server refuses a 4.2 client, `UNIMPLEMENTED` for an RPC it lacks and an unset-oneof
+`INTERNAL_ERROR` for a plan node protobuf dropped, now carry a sentence naming the cause. The
+`Spark versions` workflow that measures this now reports every failing test and the golden
+diffs in its run summary whichever way the suite goes.
+
+**A Livebook notebook**, `notebooks/quick_start.livemd`, and a "Run in Livebook" badge.
 
 ## 0.6.1 — 2026-09-10
 
