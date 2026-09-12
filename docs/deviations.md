@@ -317,6 +317,19 @@ The size Latu can measure without Arrow internals; slightly larger than raw buff
 escalates to cached artifacts marginally earlier. Behaviour past the threshold is the same 4.2
 chunked-artifact path.
 
+### `createDataFrame` with a list column → refused by the server, `UNSUPPORTED_ARROWTYPE`
+
+A behaviour deviation rather than a spelling one, and not Latu's to fix. Explorer writes Arrow
+through Polars, which gives every list 64-bit offsets (Arrow's `LargeList`); Spark's
+`ArrowUtils.fromArrowField` matches `List` and `ListView` and has no arm for `LargeList`, so an
+`array<...>` column fails with `[UNSUPPORTED_ARROWTYPE] Unsupported arrow type LargeList`
+whatever `schema:` says — the schema is a cast applied after the Arrow schema has been read. The
+refusal lands at the **first action**, not at `create_dataframe/3`: the bytes ship and the frame
+looks ordinary until something makes the server read its schema.
+`LargeUtf8` *is* matched, which is why string columns are unaffected, and PySpark never meets it
+because pyarrow writes 32-bit offsets. The route up for an `array` column is Parquet through
+`copy_to_fs/3`; `latu_ml`'s cookbook has the worked example.
+
 ### `cacheTable(name, storageLevel)` → `cache_table/2` — no storage level
 
 The `StorageLevel` proto for one rarely-passed argument; the server default is almost always

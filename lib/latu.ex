@@ -871,6 +871,11 @@ defmodule Latu do
       needs one**, since there is nothing to infer from. There is no client-side schema model,
       here or in `read/2`.
 
+  **A list column cannot go up.** Explorer writes Arrow's `LargeList` and the server's reader
+  has no arm for it, so an `array<...>` column is refused at the first action, not here,
+  whatever `schema:` says
+  (`docs/deviations.md`); `copy_to_fs/3` and a Parquet file are the route for one.
+
   **A schema is matched to the data by name**, whatever order either is in:
   `[%{id: 1, jan: 10.0}]` with `schema: "jan DOUBLE, id INT"` puts each value under its own
   name. When no data name is in the schema, the schema renames by position —
