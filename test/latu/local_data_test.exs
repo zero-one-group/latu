@@ -49,9 +49,29 @@ defmodule Latu.LocalDataTest do
       end
     end
 
-    test "a row missing a column", %{session: _session} do
-      assert_raise KeyError, fn ->
-        DataFrame.columns_for([%{a: 1, b: 2}, %{a: 3}])
+    test "a row missing a column is refused, naming the mismatch", %{session: _session} do
+      error =
+        assert_raise ArgumentError, fn ->
+          DataFrame.columns_for([%{a: 1, b: 2}, %{a: 3}])
+        end
+
+      assert error.message =~ "rows must be uniform"
+      assert error.message =~ "row 1"
+    end
+
+    test "a row with an extra column is refused, not silently dropped", %{session: _session} do
+      error =
+        assert_raise ArgumentError, fn ->
+          DataFrame.columns_for([%{id: 1}, %{id: 2, amount: 900}])
+        end
+
+      assert error.message =~ "row 1"
+      assert error.message =~ "amount"
+    end
+
+    test "an empty first row is refused against populated ones", %{session: _session} do
+      assert_raise ArgumentError, ~r/rows must be uniform/, fn ->
+        DataFrame.columns_for([%{}, %{a: 1}])
       end
     end
 
