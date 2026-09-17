@@ -3,6 +3,40 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.7.1 — 2026-09-17
+
+Bug fixes from an external review. No API additions; two error behaviours changed, noted below.
+
+**A window partitions by name, not by a string literal.** `Window.partition_by("g")` partitioned
+on the constant `"g"` and collapsed every row into one partition. A string is now the column
+named `g`, as it is in `group_by` and PySpark's `partitionBy`. Use `lit/1` for a constant.
+
+**`create_dataframe/3` refuses rows that do not share their keys.** The columns came from the
+first row alone, so a key a later row added was dropped and one it omitted raised a bare
+`KeyError`. Non-uniform rows now raise an `ArgumentError` naming the offending row.
+
+**`to_nx/2` returns an error where Nx has no tensor.** A zero-row result, or a column of empty
+lists, used to raise past the documented `{:error, %Latu.Error{}}` contract; it now returns the
+error. `stream_nx/2` skips an empty batch rather than failing on it.
+
+**`to_nx/2` column pruning survives an ignored binary column.** The Arrow reader gave a binary
+column two buffers where it has three and misaligned the batch, so selecting other columns
+failed. It counts them now.
+
+**A bare `false` is a real predicate in `merge` and `write_v2`.** `on: false` raised while
+encoding and a V2 `condition: false` was dropped silently; both now travel as a `false` literal,
+the same plan `lit(false)` already produced.
+
+**`select`, `sort` and grouping accept a `CaseWhen`.** `select(df, F.when_(...))` and the sort
+and grouping forms raised where only a named projection had worked.
+
+**An early-stopped result stream no longer leaks a transport process.** `stream/2` and
+`stream_nx/2` release and drain on the way out, so an `Enum.take` or a raising consumer reaps the
+underlying gRPC response process instead of leaving it and its buffer alive. A killed process
+runs no cleanup, so that still strands the execution until `interrupt/2` or the server timeout.
+The streaming docs no longer describe this as bounded-memory backpressure: lazy decode does not
+bound what the transport buffers ahead of consumption.
+
 ## 0.7.0 — 2026-09-11
 
 **Nested data.** `Latu.Column.get_field/2` and `get_item/2` read a struct field, an array
