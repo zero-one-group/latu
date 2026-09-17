@@ -211,6 +211,10 @@ defmodule Latu.Result.Arrow do
   defp buffer_count(:utf8), do: 3
   defp buffer_count(:list), do: 2
   defp buffer_count(:struct), do: 1
+  # Binary (4), LargeBinary (19) and LargeUtf8 (20) are var-length like Utf8: validity,
+  # offsets, data. Spark emits binary columns as Binary, strings as LargeUtf8 under
+  # useLargeVarTypes. Nx still refuses them by name; this only keeps the walk aligned past one.
+  defp buffer_count({:other, tag}) when tag in [4, 19, 20], do: 3
   defp buffer_count(_primitive), do: 2
 
   # =============================================
