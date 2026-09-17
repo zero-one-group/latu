@@ -238,10 +238,23 @@ if Code.ensure_loaded?(Nx) do
           type = hd(types)
           width = hd(widths)
           total = Enum.sum(rows)
-          binary = flatten(binaries, pruned?)
 
-          shape = if width, do: {total, width}, else: {total}
-          {:ok, binary |> Nx.from_binary(type) |> Nx.reshape(shape)}
+          cond do
+            total == 0 ->
+              {:error,
+               "column #{name} has no rows, and Nx has no empty tensor; a zero-row " <>
+                 "result cannot become one"}
+
+            width == 0 ->
+              {:error,
+               "column #{name} is an empty list in every row, and Nx has no zero-width " <>
+                 "tensor"}
+
+            true ->
+              binary = flatten(binaries, pruned?)
+              shape = if width, do: {total, width}, else: {total}
+              {:ok, binary |> Nx.from_binary(type) |> Nx.reshape(shape)}
+          end
       end
     end
 
