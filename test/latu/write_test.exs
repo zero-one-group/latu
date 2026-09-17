@@ -6,6 +6,7 @@ defmodule Latu.WriteTest do
   alias Latu.Column
   alias Latu.DataFrame
   alias Latu.Plan
+  alias Latu.Protocol.Spark.Connect, as: Proto
   alias Latu.Session
 
   # Golden plans come from PySpark: python dev/pyspark_oracle.py --generate
@@ -137,6 +138,22 @@ defmodule Latu.WriteTest do
       assert_raise ArgumentError, ~r/overwrite/, fn ->
         DataFrame.write_v2_command(df, "t", mode: :append, condition: Column.greater(:id, 3))
       end
+    end
+
+    test "a bare false condition is a literal, not a dropped predicate", %{df: df} do
+      false_cmd = Plan.write_v2(df.plan, "t", mode: :overwrite, condition: false)
+      lit_cmd = Plan.write_v2(df.plan, "t", mode: :overwrite, condition: Column.lit(false))
+
+      {:write_operation_v2, with_false} = false_cmd.command_type
+      {:write_operation_v2, with_lit} = lit_cmd.command_type
+
+      assert with_false.overwrite_condition == with_lit.overwrite_condition
+      assert %Proto.Expression{expr_type: {:literal, _}} = with_false.overwrite_condition
+    end
+
+    test "no condition leaves overwrite_condition absent", %{df: df} do
+      {:write_operation_v2, write} = Plan.write_v2(df.plan, "t", mode: :overwrite).command_type
+      assert write.overwrite_condition == nil
     end
   end
 end

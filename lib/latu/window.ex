@@ -57,7 +57,7 @@ defmodule Latu.Window do
   @doc "Replace the partitioning of an existing specification."
   @spec partition_by(t(), [term()] | term()) :: t()
   def partition_by(%__MODULE__{} = window, columns) do
-    %{window | partitions: columns |> List.wrap() |> Enum.map(&Plan.to_expr/1)}
+    %{window | partitions: columns |> List.wrap() |> Enum.map(&Plan.to_name/1)}
   end
 
   @doc """

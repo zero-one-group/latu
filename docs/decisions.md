@@ -1803,3 +1803,27 @@ page tells a user what to expect, the messages tell them what happened, and Latu
 plan to every server. The residual risk the page names, an optional 4.2 field silently ignored
 by an older server, has no known instance in what Latu offers, which is why `real_time` is not
 offered.
+
+## 2026-09-17 — Review fixes: name coercion, uniform rows, empty tensors
+
+A round of fixes from an external review. Three carried a semantic choice worth recording; the
+rest were plain bugs and live only in their tests (a `CaseWhen` missing from `to_name/1`, so it
+raised in a bare `select`/`sort`; a bare `false` predicate dropped by `value && grounded(value)`
+in `merge_action/3` and `write_v2/3`, where absence must be `nil`, not falsiness; and Binary's
+third Arrow buffer uncounted in `Result.Arrow`, which misaligned the batch walk past an ignored
+binary column).
+
+`Window.partition_by/2` coerces with `to_name/1`, not `to_expr/1`: a string is a partition *name*,
+as it is in `group_by` and PySpark's `partitionBy`, not a constant literal that collapses every
+row into one partition. `lit/1` is still how you ask for a constant. The goldens missed it because
+every window fixture partitions by an atom.
+
+`create_dataframe/3` rejects a list of row maps whose rows do not all carry the same keys, naming
+the offending row. The first row alone had decided the columns, so a key a later row added
+vanished and one it omitted raised a bare `KeyError`. This enforces the M8.4 uniform-rows
+contract rather than inferring a heterogeneous schema.
+
+`to_nx/2` returns `{:error, %Latu.Error{}}` for a result Nx cannot hold as a tensor: zero rows, or
+a column of empty lists. Nx has no zero-sized dimension, so `Nx.from_binary/2` was raising past
+the error contract. `stream_nx/2` instead skips a zero-row batch, because an empty partition is
+ordinary in a per-batch stream; a wholly empty result there simply yields nothing.

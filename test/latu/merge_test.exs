@@ -5,6 +5,7 @@ defmodule Latu.MergeTest do
   import Latu.Wire
 
   alias Latu.MergeInto
+  alias Latu.Protocol.Spark.Connect, as: Proto
   alias Latu.Session
 
   # Golden plans come from PySpark: python dev/pyspark_oracle.py --generate
@@ -154,6 +155,33 @@ defmodule Latu.MergeTest do
     end
   end
 
+  describe "a bare false predicate" do
+    setup %{plain: source} do
+      %{merge: Latu.merge_into(source, "people", expr("people.id = s.id"))}
+    end
+
+    test "on: false is a literal, the same plan as on: lit(false)", %{merge: merge} do
+      with_false = Latu.when_matched(merge, :delete, on: false)
+      with_lit = Latu.when_matched(merge, :delete, on: lit(false))
+
+      assert condition(with_false, :matched) == condition(with_lit, :matched)
+      assert %Proto.Expression{expr_type: {:literal, _}} = condition(with_false, :matched)
+    end
+
+    test "on: nil leaves the condition absent", %{merge: merge} do
+      assert condition(Latu.when_matched(merge, :delete), :matched) == nil
+    end
+
+    test "the command encodes, where a bare false raised before", %{merge: merge} do
+      command =
+        merge
+        |> Latu.when_matched(:delete, on: false)
+        |> MergeInto.command()
+
+      assert is_binary(Proto.Command.encode(command))
+    end
+  end
+
   describe "the merge itself" do
     test "needs at least one clause", %{plain: source} do
       merge = Latu.merge_into(source, "people", expr("people.id = s.id"))
@@ -201,6 +229,11 @@ defmodule Latu.MergeTest do
         Latu.merge_into(source, "people", Latu.Column.isin(:id, inner))
       end
     end
+  end
+
+  defp condition(merge, clause) do
+    [%Proto.Expression{expr_type: {:merge_action, action}}] = Map.fetch!(merge, clause)
+    action.condition
   end
 
   defp action_type(expression) do

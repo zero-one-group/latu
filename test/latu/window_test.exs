@@ -137,5 +137,22 @@ defmodule Latu.WindowTest do
     end
   end
 
+  describe "partition_by" do
+    test "a string is a partition name, not a constant literal" do
+      assert %Proto.Expression{expr_type: {:window, spec}} = plan(W.partition_by("g"))
+      assert [%Proto.Expression{expr_type: {:unresolved_attribute, attr}}] = spec.partition_spec
+      assert attr.unparsed_identifier == "g"
+    end
+
+    test "an atom and a string name the same partition" do
+      assert plan(W.partition_by(:g)) == plan(W.partition_by("g"))
+    end
+
+    test "lit/1 still partitions by a constant, for the case that wants one" do
+      assert %Proto.Expression{expr_type: {:window, spec}} = plan(W.partition_by(lit("g")))
+      assert [%Proto.Expression{expr_type: {:literal, _}}] = spec.partition_spec
+    end
+  end
+
   defp plan(window), do: Plan.over(F.row_number(), window)
 end

@@ -203,6 +203,27 @@ defmodule Latu.FunctionsTest do
       assert %Latu.DataFrame{} = session |> Latu.range(3) |> Latu.with_columns(big: chain)
     end
 
+    test "is coerced where a name is expected, not only under a name" do
+      assert %Proto.Expression{expr_type: {:unresolved_function, call}} =
+               Plan.to_name(F.when_(true, 1))
+
+      assert call.function_name == "when"
+    end
+
+    test "is coerced where a sort key is expected" do
+      assert %Proto.Expression.SortOrder{child: child} = Plan.to_sort_order(F.when_(true, :v))
+      assert %Proto.Expression{expr_type: {:unresolved_function, call}} = child
+      assert call.function_name == "when"
+    end
+
+    test "select and sort take a CaseWhen directly, not only under a name" do
+      session = Session.from_url!("sc://localhost:15002")
+      df = Latu.range(session, 3)
+
+      assert %Latu.DataFrame{} = Latu.select(df, F.when_(Latu.Column.greater(:id, 1), :id))
+      assert %Latu.DataFrame{} = Latu.sort(df, F.when_(Latu.Column.greater(:id, 1), :id))
+    end
+
     test "refuses a branch added after the else" do
       chain = F.when_(:a, 1) |> F.otherwise(2)
 
