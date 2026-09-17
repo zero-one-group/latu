@@ -185,7 +185,7 @@ defmodule Latu.Client do
   **Killing the task instead is not the same thing, and it is worse.** A Latu execution is
   reattachable, which is precisely the promise that a client may vanish and come back — so a
   killed client leaves the execution *running on the server*, holding its cluster resources
-  until the detached timeout expires. Latu releases the execution when the stream ends
+  until the detached timeout expires, and the local Gun response buffer alive along with it. Latu releases the execution when the stream ends
   normally, including on an error; `Task.shutdown/2` and a killed process skip that. Interrupt
   first, then let the task finish.
   """
@@ -1015,11 +1015,37 @@ defmodule Latu.Client do
   defp finished(state) do
     close(state)
     release_all(state)
+    drain_abandoned(state)
 
     duration = System.monotonic_time() - state.started_at
     metadata = Map.put(ids(state.execution), :outcome, state.outcome)
 
     Telemetry.execution_finished(duration, metadata)
+  end
+
+  # A consumer that stopped before the stream's terminal message leaves the Gun response
+  # process holding its buffer, and the connection outlives it. `release_all/1` above has told
+  # the server to stop, which bounds what is still on the wire (dev/probe_release_drain.exs: a
+  # sub-millisecond tail on 4.2.0, against the whole remainder unreleased), so reading to EOF
+  # here consumes the terminal message and lets that process exit. `pull` is nil once the
+  # stream ended on its own, so this touches only an abandoned or failed one. Best effort: a
+  # raise here must never replace the caller's own exception while it unwinds. Not for the
+  # listener bus (`close` set), whose stream has no terminal until its remove command.
+  defp drain_abandoned(%{close: nil, started?: true, pull: pull}) when not is_nil(pull) do
+    drain_to_eof(pull)
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
+  end
+
+  defp drain_abandoned(_state), do: :ok
+
+  defp drain_to_eof(pull) do
+    case read(pull) do
+      {:eof, _pull} -> :ok
+      {_event, pull} -> drain_to_eof(pull)
+    end
   end
 
   # The listener bus is the one stream whose end is a command rather than a release: the server

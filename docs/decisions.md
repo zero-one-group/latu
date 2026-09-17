@@ -65,8 +65,10 @@ keeps `session.timeout`, a single round trip where a deadline means what it says
 
 Liveness is the connection's: `keepalive` plus `keepalive_tolerance`. Gun reads the tolerance
 with `map_get/2` inside a guard, so when it is absent Gun pings forever and never closes — set it.
-Bounding a query is the caller's `Task`; the gRPC stream process is linked to whoever consumes
-it, so `Task.shutdown` cancels the RPC and leaves the channel usable.
+Bounding a query is the caller's `Task` plus `interrupt/2` on the server. The gRPC response
+process is owned by the connection, not the consumer, so `Task.shutdown` does not cancel the
+RPC: it strands the server execution until `detachedTimeout` and leaves the local receive
+buffer in place. Interrupt, then let the task finish, as `execute/3` says.
 
 Two guards turn silence into an error: a batch carrying `chunk_index` is refused (Latu never
 requests result chunking), and `start_offset` is checked against rows seen, as PySpark does.
@@ -1827,3 +1829,25 @@ contract rather than inferring a heterogeneous schema.
 a column of empty lists. Nx has no zero-sized dimension, so `Nx.from_binary/2` was raising past
 the error contract. `stream_nx/2` instead skips a zero-row batch, because an empty partition is
 ordinary in a per-batch stream; a wholly empty result there simply yields nothing.
+
+## 2026-09-17 — Streaming is lazy decode, not bounded backpressure
+
+`stream/2` and `stream_nx/2` decode one Arrow batch at a time, so a caller never holds the whole
+*decoded* result at once. They are not bounded-memory, though: the Gun transport receives ahead of
+consumption up to the HTTP/2 stream window (`:window_size`, 128 MiB by default), and its
+application flow is `infinity`, so a slow consumer can retain that much undecoded. Bounding the
+transport itself needs a receive-flow change in elixir-grpc (Gun's `flow` plus `update_flow` as
+messages are consumed); Latu will not fork the locked adapter for it, so the limitation stands and
+the fix, if it comes, is upstream (finding 1 of the 2026-09-17 review).
+
+The same ownership has a second edge. A Gun response process is linked to the connection, not the
+consumer, and holds its buffered messages until its terminal one is read. So `responses/2`'s
+`after_fun`, after releasing the execution, drains the abandoned stream to EOF: reading the
+terminal message lets that process exit. `ReleaseExecute(ReleaseAll)` stops the server's sender
+first, so the drain is a bounded tail, not the rest of the result — `dev/probe_release_drain.exs`
+measured 0.3 MB / 1 ms against 155 MB / 694 ms unreleased on 4.2.0. The after_fun runs on a normal
+end, an early `Enum.take`, and a raising consumer, so all three are reaped; it does not run when
+the consuming process is *killed* (`Task.shutdown`, a crash with no unwind), which still strands
+the execution and buffer until `interrupt/2` or the server timeout — one more reason the guidance
+is interrupt, never kill. The listener bus is excluded: its stream has no terminal until its
+remove command, so draining it could block.
