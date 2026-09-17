@@ -69,6 +69,18 @@ defmodule Latu.Result.NxTest do
       assert message =~ "the result has a, b"
     end
 
+    test "an unselected binary column does not break pruning, either side of the wanted one" do
+      assert {:ok, %{"n" => before}} =
+               Tensors.decode([stream("binary_before_num")], columns: ["n"])
+
+      assert Nx.to_flat_list(before) == [42]
+
+      assert {:ok, %{"n" => later}} =
+               Tensors.decode([stream("num_before_binary")], columns: ["n"])
+
+      assert Nx.to_flat_list(later) == [42]
+    end
+
     # An Arrow buffer is a slice of the whole batch and holds it alive, so pruning has to copy
     # or it would keep every column it was asked to drop. Needs a batch over 64 bytes: below
     # that the BEAM copies into the process heap however the buffer was made.
@@ -119,6 +131,16 @@ defmodule Latu.Result.NxTest do
     test "a stream carrying no batch at all" do
       assert {:error, message} = Tensors.decode([stream("empty")])
       assert message =~ "no batches at all"
+    end
+
+    test "a zero-row batch is a decode error, not a raised empty tensor" do
+      assert {:error, message} = Tensors.decode([stream("zero_row_batch")])
+      assert message =~ "column n has no rows"
+    end
+
+    test "a column of empty lists has no width to reshape" do
+      assert {:error, message} = Tensors.decode([stream("empty_lists")])
+      assert message =~ "empty list in every row"
     end
 
     test "two columns of one name, which a name-keyed map would silently halve" do

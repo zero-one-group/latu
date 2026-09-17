@@ -1611,7 +1611,7 @@ defmodule Latu.Plan do
 
     merge = %Proto.MergeAction{
       action_type: lookup(@merge_actions, action, "merge action"),
-      condition: opts[:on] && grounded(opts[:on], :on),
+      condition: maybe_grounded(opts[:on], :on),
       assignments: assignments(action, opts[:set])
     }
 
@@ -1824,11 +1824,16 @@ defmodule Latu.Plan do
       clustering_columns: Enum.map(opts[:cluster_by], &identifier/1),
       table_properties: Map.new(to_properties(opts[:table_properties])),
       options: Map.new(to_options(opts[:options])),
-      overwrite_condition: opts[:condition] && grounded(opts[:condition], :condition)
+      overwrite_condition: maybe_grounded(opts[:condition], :condition)
     }
 
     %Proto.Command{command_type: {:write_operation_v2, write}}
   end
+
+  # `false` is a real predicate, so a condition is absent only when it is nil. `value &&
+  # grounded(value, key)` would drop a bare false: merge raises, write_v2 loses it silently.
+  defp maybe_grounded(nil, _key), do: nil
+  defp maybe_grounded(value, key), do: grounded(value, key)
 
   # A command is not a relation, so there is no `WithRelations` to hoist a reference into: a
   # subquery in a write would encode as a carrier where an expression belongs and fail somewhere
@@ -2509,6 +2514,7 @@ defmodule Latu.Plan do
   @spec to_name(term()) :: expression()
   def to_name(%Proto.Expression{} = expr), do: expr
   def to_name(%Latu.Subquery{} = subquery), do: subquery
+  def to_name(%Latu.CaseWhen{} = chain), do: to_expr(chain)
   def to_name(name), do: col(name)
 
   @doc """

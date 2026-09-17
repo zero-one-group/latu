@@ -102,6 +102,15 @@ defmodule Latu.Result.ArrowTest do
       assert length(c.buffers) == 3
     end
 
+    test "a binary column also has three buffers, so a mixed batch stays aligned" do
+      {:ok, [batch]} = Arrow.read(stream("num_before_binary"))
+
+      assert Enum.map(batch.columns, & &1.name) == ["n", "b"]
+      b = Enum.find(batch.columns, &(&1.name == "b"))
+      assert b.type == {:other, 4}
+      assert length(b.buffers) == 3
+    end
+
     test "booleans are a bitmap: three rows in one byte" do
       c = column("booleans", "v")
 

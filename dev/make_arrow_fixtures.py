@@ -30,6 +30,19 @@ def stream(table: pa.Table) -> bytes:
     return sink.getvalue().to_pybytes()
 
 
+def stream_batches(schema: pa.Schema, batches: list[pa.RecordBatch]) -> bytes:
+    """Write explicit record batches, so a present-but-empty batch survives.
+
+    `stream()` goes through `write_table`, which drops a zero-row chunk; Spark sends one
+    for `... WHERE false`, and the reader has to answer it rather than let Nx raise.
+    """
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, schema) as writer:
+        for batch in batches:
+            writer.write_batch(batch)
+    return sink.getvalue().to_pybytes()
+
+
 def vector_udt(vectors, dense=True):
     """Spark's VectorUDT sqlType, which is what a Vector column is in Arrow.
 
@@ -92,6 +105,22 @@ def cases() -> dict[str, pa.Table]:
         # A schema and no batch at all, which pyarrow writes for an empty table and Spark does
         # not — the reader has to answer for both.
         "empty": pa.table({"v": pa.array([], pa.float64())}),
+        # One row whose list is empty: a zero-width numeric list, which Nx cannot reshape.
+        "empty_lists": pa.table({"n": pa.array([[]], pa.list_(pa.float64()))}),
+        # A binary column beside a numeric one, each way round. Binary has three buffers, so
+        # the batch walk misaligns and pruning fails unless the reader counts them.
+        "binary_before_num": pa.table(
+            {
+                "b": pa.array([b"\x01\x02"], pa.binary()),
+                "n": pa.array([42], pa.int64()),
+            }
+        ),
+        "num_before_binary": pa.table(
+            {
+                "n": pa.array([42], pa.int64()),
+                "b": pa.array([b"\x01\x02"], pa.binary()),
+            }
+        ),
         # Big enough that its buffers are refc binaries. Under 64 bytes the BEAM copies into
         # the process heap whatever the reader does, so a small batch cannot show whether a
         # column's buffer still points into the whole one.
@@ -104,24 +133,35 @@ def cases() -> dict[str, pa.Table]:
     }
 
 
+def raw_cases() -> dict[str, bytes]:
+    """Fixtures that need explicit record batches rather than a table."""
+    n = pa.schema([pa.field("n", pa.int64())])
+    zero_rows = pa.record_batch([pa.array([], pa.int64())], schema=n)
+    return {
+        # A present but empty batch: group() passes, and build() must not reach Nx empty.
+        "zero_row_batch": stream_batches(n, [zero_rows]),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="exit 1 if a file is stale")
     args = parser.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
+    streams = {name: stream(table) for name, table in cases().items()}
+    streams.update(raw_cases())
     stale = []
 
-    for name, table in cases().items():
+    for name, wanted in streams.items():
         path = OUT / f"{name}.arrow"
-        wanted = stream(table)
 
         if args.check:
             if not path.exists() or path.read_bytes() != wanted:
                 stale.append(path)
         else:
             path.write_bytes(wanted)
-            print(f"{name:20s} {len(wanted):7d} bytes  {table.num_rows} rows")
+            print(f"{name:20s} {len(wanted):7d} bytes")
 
     if args.check:
         for path in stale:

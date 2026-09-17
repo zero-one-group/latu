@@ -331,6 +331,9 @@ defmodule Latu.DataFrame do
   end
 
   def columns_for([row | _] = rows) when is_map(row) and not is_struct(row) do
+    keys = row |> Map.keys() |> MapSet.new()
+    ensure_uniform_rows(rows, keys)
+
     for name <- row |> Map.keys() |> Enum.sort() do
       {column_name(name), Enum.map(rows, &Map.fetch!(&1, name))}
     end
@@ -341,6 +344,26 @@ defmodule Latu.DataFrame do
           "create_dataframe takes an Explorer.DataFrame, a list of row maps, or column data " <>
             "(a map or keyword list of lists), got: #{inspect(other)}"
   end
+
+  # The first row alone would decide the columns, so a later row that adds a key would lose
+  # it, and one that omits a key would raise a bare KeyError. Uniform rows are the M8.4
+  # contract (docs/decisions.md).
+  defp ensure_uniform_rows(rows, keys) do
+    rows
+    |> Enum.with_index()
+    |> Enum.each(fn {row, index} ->
+      row_keys = row |> Map.keys() |> MapSet.new()
+
+      if row_keys != keys do
+        raise ArgumentError,
+              "create_dataframe rows must be uniform: row #{index} has keys " <>
+                "#{inspect(sorted_keys(row_keys))}, the first row has " <>
+                "#{inspect(sorted_keys(keys))}"
+      end
+    end)
+  end
+
+  defp sorted_keys(keys), do: keys |> MapSet.to_list() |> Enum.sort()
 
   defp column!(values) when is_list(values), do: values
 
@@ -2054,7 +2077,8 @@ defmodule Latu.DataFrame do
   Backpressure for results too large to hold, as `stream/2` is for Explorer. Each batch decodes
   on its own, so the tensors are per batch and stacking them is the caller's business — that is
   the difference from `to_nx/2`, which concatenates. Raises `Latu.Error` on failure, since an
-  enumeration has no way to return one.
+  enumeration has no way to return one. An empty batch (a partition with no rows) yields
+  nothing.
 
       df |> Latu.stream_nx(columns: ["features"]) |> Enum.map(&Nx.sum(&1["features"]))
   """
@@ -2066,6 +2090,11 @@ defmodule Latu.DataFrame do
     |> Client.responses(Plan.new(df.plan))
     |> Client.watched(watch(opts))
     |> Stream.flat_map(fn
+      # An empty partition sends a zero-row batch, which has no tensor; skip it. to_nx/2
+      # concatenates instead, so a wholly empty result is an error there, not an empty map.
+      {:ok, %{row_count: 0}} ->
+        []
+
       {:ok, batch} ->
         case tensors([batch.data], opts) do
           {:ok, decoded} -> [decoded]
