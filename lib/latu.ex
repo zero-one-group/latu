@@ -11,8 +11,11 @@ defmodule Latu do
       Latu.disconnect(session)
 
   Two things it does hold, both in structs you keep: **the channel is a process** — `connect/2`
-  opens it, `disconnect/2` closes it, and an execution's response stream is linked to whoever
-  consumes it — and **a checkpoint is a server-side resource**, freed by `release/1` or scoped by
+  opens it, `disconnect/2` closes it, and an execution's response stream is owned by the
+  connection, not by whoever reads it: reading it to the end or stopping early both release it,
+  server side and locally, but a consumer whose process is *killed* unwinds nothing, so that
+  leaves the execution running until `interrupt/2` or the server's timeout, and its buffer with
+  it — and **a checkpoint is a server-side resource**, freed by `release/1` or scoped by
   `with_checkpoint/3`, because there is no finalizer to free it for you. Latu hands out
   resources and never keeps them; nothing is tracked between calls.
 

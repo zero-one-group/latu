@@ -1979,10 +1979,11 @@ defmodule Latu.DataFrame do
   @doc """
   The result as a lazy stream of `Explorer.DataFrame`s, one per Arrow batch.
 
-  Backpressure for results too large to hold: each batch decodes as it arrives, and stopping
-  early releases the execution. Raises `Latu.Error` on failure, since an enumeration has no
-  way to return one. The schema guard runs on the `DataType` the server sends ahead of the
-  first batch.
+  Lazy: each batch decodes as it arrives and stopping early releases the execution, so you
+  never hold the whole *decoded* result. It is not bounded-memory backpressure, though — the
+  transport receives ahead of consumption up to the stream window (`docs/decisions.md`,
+  2026-09-17). Raises `Latu.Error` on failure, since an enumeration has no way to return one.
+  The schema guard runs on the `DataType` the server sends ahead of the first batch.
 
       df |> Latu.stream() |> Stream.map(&Explorer.DataFrame.n_rows/1) |> Enum.sum()
   """
@@ -2074,11 +2075,11 @@ defmodule Latu.DataFrame do
   @doc """
   A lazy stream of `to_nx/2`'s tensors, one map per Arrow batch.
 
-  Backpressure for results too large to hold, as `stream/2` is for Explorer. Each batch decodes
-  on its own, so the tensors are per batch and stacking them is the caller's business — that is
-  the difference from `to_nx/2`, which concatenates. Raises `Latu.Error` on failure, since an
-  enumeration has no way to return one. An empty batch (a partition with no rows) yields
-  nothing.
+  Like `stream/2` but yielding tensors. Each batch decodes on its own, so the tensors are per
+  batch and stacking them is the caller's business — the difference from `to_nx/2`, which
+  concatenates. The same transport caveat applies: not bounded-memory (`docs/decisions.md`,
+  2026-09-17). Raises `Latu.Error` on failure, since an enumeration has no way to return one.
+  An empty batch (a partition with no rows) yields nothing.
 
       df |> Latu.stream_nx(columns: ["features"]) |> Enum.map(&Nx.sum(&1["features"]))
   """
