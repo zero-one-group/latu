@@ -143,6 +143,20 @@ defmodule Latu.Result.NxTest do
       assert message =~ "empty list in every row"
     end
 
+    test "a zero-row batch beside a populated one neither breaks nor votes on the width" do
+      empty = stream("zero_row_list_batch")
+      full = stream("list_uniform")
+
+      assert {:ok, %{"v" => t}} = Tensors.decode([empty, full])
+      assert Nx.shape(t) == {3, 2}
+
+      assert {:ok, %{"v" => t}} = Tensors.decode([full, empty])
+      assert Nx.shape(t) == {3, 2}
+
+      assert {:error, message} = Tensors.decode([empty, empty])
+      assert message =~ "column v has no rows"
+    end
+
     test "two columns of one name, which a name-keyed map would silently halve" do
       assert {:error, message} = Tensors.decode([stream("duplicate_names")])
       assert message =~ "more than one column named v"

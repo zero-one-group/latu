@@ -1957,7 +1957,8 @@ defmodule Latu.DataFrame do
 
   **Unbounded**, like `collect/2`, `to_arrow/2` and Spark's own `collect`: the whole result
   comes back. To take part of it, bound the *plan* — which is how Spark does it, and what
-  `limit/2` is for. A result too large to hold at all is what `stream/2` is for.
+  `limit/2` is for. A result too large to *decode* at once is what `stream/2` is for; it does
+  not shrink what is received (see there).
 
       {:ok, frame} = Latu.to_explorer(df)
       {:ok, frame} = df |> Latu.limit(10_000) |> Latu.to_explorer()
@@ -1980,9 +1981,11 @@ defmodule Latu.DataFrame do
   The result as a lazy stream of `Explorer.DataFrame`s, one per Arrow batch.
 
   Lazy: each batch decodes as it arrives and stopping early releases the execution, so you
-  never hold the whole *decoded* result. It is not bounded-memory backpressure, though — the
-  transport receives ahead of consumption up to the stream window (`docs/decisions.md`,
-  2026-09-17). Raises `Latu.Error` on failure, since an enumeration has no way to return one.
+  never hold the whole *decoded* result. It does not bound what is *received*: the transport
+  keeps taking the rest of the result as fast as the server sends it, whether or not you are
+  consuming, so a slow consumer can hold the remaining raw Arrow bytes. `:window_size` tunes
+  HTTP/2 throughput and is not a memory limit (`docs/decisions.md`, 2026-09-17). Raises
+  `Latu.Error` on failure, since an enumeration has no way to return one.
   The schema guard runs on the `DataType` the server sends ahead of the first batch.
 
       df |> Latu.stream() |> Stream.map(&Explorer.DataFrame.n_rows/1) |> Enum.sum()

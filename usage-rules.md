@@ -68,8 +68,8 @@ names the twin. A write consumes the frame, so its metrics would be produced and
 **whole** result back, and none of them takes a row limit. Spark's `collect` takes no arguments
 either. To take part of a result, bound the plan:
 `df |> Latu.limit(10_000) |> Latu.to_explorer()`, or `Latu.take(df, 10_000)` for rows. For a
-result too large to hold, `Latu.stream/2` gives one `Explorer.DataFrame` per Arrow batch and
-`Latu.stream_nx/2` one map of tensors.
+result too large to decode at once, `Latu.stream/2` gives one `Explorer.DataFrame` per Arrow
+batch and `Latu.stream_nx/2` one map of tensors; neither bounds what the transport receives.
 
 ## Errors tell you what went wrong
 

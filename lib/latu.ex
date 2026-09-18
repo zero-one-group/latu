@@ -80,6 +80,8 @@ defmodule Latu do
     * `:tags` — execution tags every query inherits, so `interrupt/2` can find them later.
       Defaults to `[]`; `Latu.Session.add_tag/2` adds one afterwards.
     * `:window_size` — HTTP/2 flow-control window in bytes. Defaults to `134_217_728` (128 MiB).
+      A throughput setting, not a memory limit: it does not cap what the transport buffers for
+      a consumer that reads slowly (`stream/2`).
     * `:keepalive` — HTTP/2 ping interval in milliseconds. Defaults to `60_000`.
     * `:keepalive_tolerance` — pings missed before the channel is considered dead. Defaults
       to `2`.
@@ -3033,7 +3035,7 @@ defmodule Latu do
 
   Unbounded, like `collect/2` and Spark's own `collect`. Bound the plan rather than the
   action — `limit/2` is the Spark way to ask for part of a result, and `stream/2` is the
-  answer for one too large to hold.
+  answer for one too large to decode at once.
 
   ## Options
 
@@ -3148,8 +3150,12 @@ defmodule Latu do
   @doc """
   The result as a lazy stream of `Explorer.DataFrame`s, one per Arrow batch.
 
-  For results too large to hold at once; stopping early releases the execution. Raises
-  `Latu.Error` on failure, since an enumeration has no way to return one.
+  For results too large to *decode* at once: one `Explorer.DataFrame` is live at a time, and
+  stopping early releases the execution. It does not bound what is *received* — the transport
+  keeps taking the rest of the result whether or not you are consuming, so the raw Arrow bytes
+  of a large result can still accumulate locally; `:window_size` is a throughput setting, not
+  a memory limit. Raises `Latu.Error` on failure, since an enumeration has no way to return
+  one.
 
   ## Options
 
@@ -3200,7 +3206,7 @@ defmodule Latu do
   lists and sparse vectors are refused by name.
 
   Unbounded, like `collect/2`. Bound the plan, or use `stream_nx/2` for a result too large to
-  hold.
+  decode at once.
 
   ## Options
 

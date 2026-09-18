@@ -223,37 +223,38 @@ if Code.ensure_loaded?(Nx) do
     # Building it
     # =============================================
 
+    # A zero-row batch says nothing about width — Spark sends one for an empty partition, and
+    # `width/3` can only call it 0 — so it neither votes on the shape nor contradicts a populated
+    # batch beside it. It is dropped first; only when every batch was empty is there no tensor.
     defp build(name, pieces, pruned?) do
-      {types, widths, rows, binaries} = unzip(pieces)
+      case Enum.reject(pieces, fn {_type, _width, rows, _binary} -> rows == 0 end) do
+        [] ->
+          {:error,
+           "column #{name} has no rows, and Nx has no empty tensor; a zero-row result " <>
+             "cannot become one"}
 
-      cond do
-        Enum.uniq(types) |> length() > 1 ->
-          {:error, "column #{name} is not the same type in every batch"}
-
-        Enum.uniq(widths) |> length() > 1 ->
-          widths = Enum.uniq(widths) |> Enum.map_join(" then ", &inspect/1)
-          {:error, "column #{name} is #{widths} wide in different batches"}
-
-        true ->
-          type = hd(types)
-          width = hd(widths)
-          total = Enum.sum(rows)
+        pieces ->
+          {types, widths, rows, binaries} = unzip(pieces)
 
           cond do
-            total == 0 ->
-              {:error,
-               "column #{name} has no rows, and Nx has no empty tensor; a zero-row " <>
-                 "result cannot become one"}
+            Enum.uniq(types) |> length() > 1 ->
+              {:error, "column #{name} is not the same type in every batch"}
 
-            width == 0 ->
+            Enum.uniq(widths) |> length() > 1 ->
+              widths = Enum.uniq(widths) |> Enum.map_join(" then ", &inspect/1)
+              {:error, "column #{name} is #{widths} wide in different batches"}
+
+            hd(widths) == 0 ->
               {:error,
                "column #{name} is an empty list in every row, and Nx has no zero-width " <>
                  "tensor"}
 
             true ->
+              width = hd(widths)
+              total = Enum.sum(rows)
               binary = flatten(binaries, pruned?)
               shape = if width, do: {total, width}, else: {total}
-              {:ok, binary |> Nx.from_binary(type) |> Nx.reshape(shape)}
+              {:ok, binary |> Nx.from_binary(hd(types)) |> Nx.reshape(shape)}
           end
       end
     end
@@ -266,7 +267,8 @@ if Code.ensure_loaded?(Nx) do
       end)
     end
 
-    # A missing data buffer is a zero-row column, which is a legal empty tensor.
+    # Zero-row pieces are dropped and zero-width lists refused before this, so a nil buffer
+    # should not arrive; `|| ""` keeps the concatenation total if one ever does.
     defp flatten(binaries, pruned?) do
       case Enum.map(binaries, &(&1 || "")) do
         [one] -> if pruned?, do: :binary.copy(one), else: one

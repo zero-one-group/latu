@@ -212,10 +212,12 @@ Use `Latu.checkpoint/2` plus `Latu.release/1` when the frame has to outlive one 
 REPL it usually does. Nothing frees a checkpoint for you. Latu holds no processes and no
 finaliser, so the session ending is the only other thing that bounds it.
 
-## Results too large to hold
+## Results too large to decode at once
 
-`Latu.stream/2` decodes one Explorer frame per Arrow batch and stops the execution when you stop
-reading, so a result that will not fit in memory never has to.
+`Latu.stream/2` decodes one Explorer frame per Arrow batch, and stops the execution when you
+stop reading. The whole decoded result is never live at once. It does not shrink what arrives:
+the transport keeps receiving while you work on a batch, so a very large result's raw bytes can
+still pile up locally. For those, bound the plan.
 
 ```elixir
 total =

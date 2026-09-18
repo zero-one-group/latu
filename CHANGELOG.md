@@ -3,6 +3,27 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.7.2 — 2026-09-18
+
+Bug fixes from a follow-up review. No API changes.
+
+**The streaming memory docs were wrong and are corrected.** `stream/2` and `stream_nx/2` bound the
+*decoded* result, one batch at a time, not what the transport receives. Gun keeps taking the rest
+of the result as fast as the server sends it, so a slow consumer can still accumulate the raw Arrow
+bytes locally. `:window_size` is a throughput setting, not a memory limit. The old "too large to
+hold" wording is gone from the facade, both docstrings, `usage-rules.md` and the cookbook.
+
+**A normally-stopped listener stream is reaped.** `events/1`'s stream was excluded from the
+abandoned-stream drain, so each cycle left a Gun response process alive. Once its remove command
+succeeds the stream is terminal, so it is now drained like any other. A failed removal is left, its
+stream having no terminal to reach.
+
+**`to_nx/2` handles a zero-row batch beside a populated one.** An empty partition's batch is dropped
+before the width is inferred, so it no longer refuses the result as differently wide. An all-empty
+result still returns the named no-rows error.
+
+Locks grpc at 1.0.5.
+
 ## 0.7.1 — 2026-09-17
 
 Bug fixes from an external review. No API additions; two error behaviours changed, noted below.

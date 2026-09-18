@@ -1013,9 +1013,9 @@ defmodule Latu.Client do
   # ExecutePlan measures *opening* the stream; this measures draining it, which is what anyone
   # asking "how long did the query take" means.
   defp finished(state) do
-    close(state)
+    closed = close(state)
     release_all(state)
-    drain_abandoned(state)
+    drain_abandoned(state, closed)
 
     duration = System.monotonic_time() - state.started_at
     metadata = Map.put(ids(state.execution), :outcome, state.outcome)
@@ -1028,10 +1028,13 @@ defmodule Latu.Client do
   # the server to stop, which bounds what is still on the wire (dev/probe_release_drain.exs: a
   # sub-millisecond tail on 4.2.0, against the whole remainder unreleased), so reading to EOF
   # here consumes the terminal message and lets that process exit. `pull` is nil once the
-  # stream ended on its own, so this touches only an abandoned or failed one. Best effort: a
-  # raise here must never replace the caller's own exception while it unwinds. Not for the
-  # listener bus (`close` set), whose stream has no terminal until its remove command.
-  defp drain_abandoned(%{close: nil, started?: true, pull: pull}) when not is_nil(pull) do
+  # stream ended on its own, so this touches only an abandoned or failed one. The listener bus
+  # is drained only when its remove command succeeded (`closed` is `:ok`, as it is for every
+  # result stream): the server then ends the events stream, so a terminal is coming. A failed
+  # removal leaves the bus registered and the stream without one, so reading would block;
+  # that stream is left, and `close/1` has already logged why. Best effort: a raise here must
+  # never replace the caller's own exception while it unwinds.
+  defp drain_abandoned(%{started?: true, pull: pull}, :ok) when not is_nil(pull) do
     drain_to_eof(pull)
   rescue
     _ -> :ok
@@ -1039,7 +1042,7 @@ defmodule Latu.Client do
     _, _ -> :ok
   end
 
-  defp drain_abandoned(_state), do: :ok
+  defp drain_abandoned(_state, _closed), do: :ok
 
   defp drain_to_eof(pull) do
     case read(pull) do
@@ -1066,6 +1069,8 @@ defmodule Latu.Client do
           "could not close the streaming listener bus: #{Exception.message(error)}. " <>
             "It stays registered until the session ends, and events/1 will not open another."
         )
+
+        :error
     end
   end
 

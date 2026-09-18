@@ -1,6 +1,7 @@
 Code.require_file("support/wire.exs", __DIR__)
 Code.require_file("support/fixtures.exs", __DIR__)
 Code.require_file("support/sql_golden.exs", __DIR__)
+Code.require_file("support/lifecycle.exs", __DIR__)
 
 # GRPC.Client.Connection announces its own shutdown at :debug, from a handle_continue that runs
 # after the test that triggered it — so `@moduletag :capture_log` never sees it.
