@@ -3,6 +3,29 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## 0.8.0 — 2026-09-18
+
+Fixes from a third review, and one small API addition: a new `identity/1` on `Latu.Session`, and a
+stricter session check in the two-input verbs. Migration is one line, below.
+
+**`Latu.Session` gains `identity/1`.** It returns `{host, port, user_id, session_id}` — the server
+reached, the user reached it as, and the client id. A pinned copy, a tagged copy and a separately
+connected handle of one session all share it; two servers handed the same explicit `session_id` do
+not.
+
+**Two-input verbs compare that identity, not the `session_id` alone.** `union`, `join` and the set
+operations refused a pair only when their `session_id` differed, so two sessions on different
+servers that had been handed the same explicit id passed the guard and the right side was silently
+evaluated against the left server's data. They now compare the full session identity: a
+cross-server pair is refused, while pinned and unpinned handles of one session are still accepted.
+Migration: nothing, unless you relied on that accidental cross-server union or join — which
+returned wrong rows.
+
+**`to_nx/2` accepts a zero-row dense-`Vector` batch beside a populated one.** 0.7.2 fixed this for
+numbers and lists, but a dense `Vector` column still read its type discriminator before the empty
+batch was dropped, and reported the whole result as sparse. A zero-row `Vector` batch is now
+dropped like any other; an all-empty result still returns the named no-rows error.
+
 ## 0.7.2 — 2026-09-18
 
 Bug fixes from a follow-up review. No API changes.

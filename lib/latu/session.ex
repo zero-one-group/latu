@@ -161,6 +161,20 @@ defmodule Latu.Session do
     %{session | server_session_id: server_session_id}
   end
 
+  @doc """
+  A session's identity: the server it reached, the user it reached it as, and the client id.
+
+  This is what makes two handles the *same* session — a pinned copy and its unpinned original, a
+  tagged copy, two handles connected independently — while telling apart two different servers
+  reached with the same explicitly supplied id. The two-input DataFrame verbs — union, join and
+  the set operations — compare this, rather than the whole struct (incidental fields differ) or
+  the id alone (not unique across servers).
+  """
+  @spec identity(t()) :: {String.t(), :inet.port_number(), String.t(), String.t()}
+  def identity(%__MODULE__{} = session) do
+    {session.host, session.port, session.user_id, session.session_id}
+  end
+
   # =============================================
   # Tags
   # =============================================
