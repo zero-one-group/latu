@@ -141,10 +141,15 @@ def raw_cases() -> dict[str, bytes]:
     # one must not be read as a width-0 column contradicting the width-2 one.
     v = pa.schema([pa.field("v", pa.list_(pa.float64()))])
     zero_row_list = pa.record_batch([pa.array([], pa.list_(pa.float64()))], schema=v)
+    # The same, for a dense Vector column: an empty batch has no type discriminator to read, so
+    # the reader must drop it before the sparse check rather than refuse it as sparse.
+    vec = pa.schema([pa.field("features", vector_udt([]).type)])
+    zero_row_vector = pa.record_batch([vector_udt([])], schema=vec)
     return {
         # A present but empty batch: group() passes, and build() must not reach Nx empty.
         "zero_row_batch": stream_batches(n, [zero_rows]),
         "zero_row_list_batch": stream_batches(v, [zero_row_list]),
+        "zero_row_vector_batch": stream_batches(vec, [zero_row_vector]),
     }
 
 
