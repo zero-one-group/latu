@@ -142,6 +142,12 @@ if Code.ensure_loaded?(Nx) do
       kinds = children |> Enum.find(&(&1.name == "type")) |> data()
 
       cond do
+        # A zero-row batch has no type buffer to read the discriminator from and votes on no
+        # width, so it becomes a droppable piece from the `values` child — the same as a zero-row
+        # list — for `build/3` to prune. Null and sparse checks stay for populated rows.
+        column.length == 0 ->
+          children |> Enum.find(&(&1.name == "values")) |> then(&list(name, &1))
+
         column.null_count > 0 ->
           {:error, "column #{name} has #{column.null_count} null Vector(s); to_nx/2 reads none"}
 

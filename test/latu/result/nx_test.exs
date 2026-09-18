@@ -157,6 +157,20 @@ defmodule Latu.Result.NxTest do
       assert message =~ "column v has no rows"
     end
 
+    test "a zero-row dense-Vector batch beside a populated one, both orders" do
+      empty = stream("zero_row_vector_batch")
+      full = stream("vector_dense")
+
+      assert {:ok, %{"features" => t}} = Tensors.decode([empty, full])
+      assert Nx.shape(t) == {4, 2}
+
+      assert {:ok, %{"features" => t}} = Tensors.decode([full, empty])
+      assert Nx.shape(t) == {4, 2}
+
+      assert {:error, message} = Tensors.decode([empty, empty])
+      assert message =~ "column features has no rows"
+    end
+
     test "two columns of one name, which a name-keyed map would silently halve" do
       assert {:error, message} = Tensors.decode([stream("duplicate_names")])
       assert message =~ "more than one column named v"

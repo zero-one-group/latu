@@ -1080,13 +1080,20 @@ defmodule Latu.DataFrame do
   end
 
   # Two-input verbs are the only place this can go wrong, and the server's error would not say
-  # so. Compare ids, not structs: one may be pinned and the other not.
-  defp same_session!(%{session: %{session_id: id}}, %{session: %{session_id: id}}), do: :ok
+  # so. Compare session identity: not the whole struct (one may be pinned, tagged or connected
+  # separately) and not the id alone (two servers can be handed the same explicit id).
+  defp same_session!(%{session: left}, %{session: right}) do
+    if Session.identity(left) == Session.identity(right) do
+      :ok
+    else
+      raise ArgumentError,
+            "these DataFrames come from different sessions, " <>
+              "#{describe_session(left)} and #{describe_session(right)}"
+    end
+  end
 
-  defp same_session!(df, other) do
-    raise ArgumentError,
-          "these DataFrames come from different sessions, " <>
-            "#{df.session.session_id} and #{other.session.session_id}"
+  defp describe_session(session) do
+    "#{session.host}:#{session.port} (#{session.session_id})"
   end
 
   # `{from, to}` pairs, keyword or not: `[id: :n]` and `[{"id", "n"}]` both rename by mapping.
