@@ -1,6 +1,8 @@
 defmodule Latu.Integration.StreamingTest do
   use ExUnit.Case, async: false
 
+  import Latu.Lifecycle
+
   alias Latu.StreamingQuery
 
   # The offline tests pin every streaming plan against PySpark's bytes; this file asserts what
@@ -219,6 +221,11 @@ defmodule Latu.Integration.StreamingTest do
     # happens after it is registered. Starting an `:available_now` query first is a race it can
     # win: three tiny files can drain before the bus exists, and then nothing ever arrives.
     test "delivers a query's events, and closes so the next one can open", %{session: session} do
+      # Each cycle halts the events stream early, after the remove command has ended it on
+      # the server; the drain must reap its response process every time, not leave one per
+      # run (the 2026-09-17 follow-up review's listener finding).
+      base = response_processes()
+
       for run <- 1..2 do
         source = bounded_source(session)
         collecting = collect_until_terminated(session)
@@ -242,6 +249,8 @@ defmodule Latu.Integration.StreamingTest do
         assert terminated.id == query.id
         assert terminated.run_id == query.run_id
         assert terminated.exception == nil
+
+        assert reaped_to?(base), "run #{run}: the events stream's response process was not reaped"
       end
     end
   end

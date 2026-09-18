@@ -137,9 +137,14 @@ def raw_cases() -> dict[str, bytes]:
     """Fixtures that need explicit record batches rather than a table."""
     n = pa.schema([pa.field("n", pa.int64())])
     zero_rows = pa.record_batch([pa.array([], pa.int64())], schema=n)
+    # The same shape as list_uniform, with no rows: an empty partition's batch ahead of a full
+    # one must not be read as a width-0 column contradicting the width-2 one.
+    v = pa.schema([pa.field("v", pa.list_(pa.float64()))])
+    zero_row_list = pa.record_batch([pa.array([], pa.list_(pa.float64()))], schema=v)
     return {
         # A present but empty batch: group() passes, and build() must not reach Nx empty.
         "zero_row_batch": stream_batches(n, [zero_rows]),
+        "zero_row_list_batch": stream_batches(v, [zero_row_list]),
     }
 
 

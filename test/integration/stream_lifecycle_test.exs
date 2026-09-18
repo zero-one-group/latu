@@ -13,33 +13,14 @@ defmodule Latu.Integration.StreamLifecycleTest do
   @moduletag :integration
   @moduletag :capture_log
 
+  import Latu.Lifecycle
+
   @url "sc://localhost:15002"
 
   setup do
     session = Latu.connect!(@url)
     on_exit(fn -> Latu.disconnect(session, release: true) end)
     %{session: session}
-  end
-
-  defp response_processes do
-    Enum.count(Process.list(), fn pid ->
-      with {:dictionary, dict} <- Process.info(pid, :dictionary),
-           {mod, _fun, _arity} <- Keyword.get(dict, :"$initial_call", nil) do
-        mod == GRPC.Client.Adapters.Gun.StreamResponseProcess
-      else
-        _ -> false
-      end
-    end)
-  end
-
-  # The process stops itself once its terminal message is read, which is a step behind the drain
-  # returning, so poll rather than assert instantly.
-  defp reaped_to?(base, tries \\ 50) do
-    cond do
-      response_processes() <= base -> true
-      tries <= 0 -> false
-      true -> Process.sleep(20) && reaped_to?(base, tries - 1)
-    end
   end
 
   test "an early-halted stream reaps its response process", %{session: session} do

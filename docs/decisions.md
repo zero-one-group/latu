@@ -395,7 +395,8 @@ module is internal and proto-licensed in the layering test.
 `collect/2` is unbounded, matching PySpark; `stream/2` is the escape for a result too large to
 hold; `to_arrow/2` returns raw per-batch IPC binaries and **bypasses the decoder and the guard**
 on purpose — the bytes are for some other Arrow reader. *(`to_explorer/2` was bounded at 100,000
-rows here; reversed 2026-09-04, see "Spark bounds a result in the plan".)*
+rows here; reversed 2026-09-04, see "Spark bounds a result in the plan". "Too large to hold"
+meant too large to decode; `stream/2` bounds nothing received — 2026-09-17.)*
 
 Facts read from PySpark and pinned: `df.count()` is `agg(count(lit(1)))` unaliased, where
 `GroupedData.count` aliases as `"count"`; the result cell is read positionally
@@ -1833,9 +1834,12 @@ ordinary in a per-batch stream; a wholly empty result there simply yields nothin
 ## 2026-09-17 — Streaming is lazy decode, not bounded backpressure
 
 `stream/2` and `stream_nx/2` decode one Arrow batch at a time, so a caller never holds the whole
-*decoded* result at once. They are not bounded-memory, though: the Gun transport receives ahead of
-consumption up to the HTTP/2 stream window (`:window_size`, 128 MiB by default), and its
-application flow is `infinity`, so a slow consumer can retain that much undecoded. Bounding the
+*decoded* result at once. They are not bounded-memory, though: Gun's application flow is
+`infinity` and it replenishes the HTTP/2 window as it receives, so the transport keeps taking the
+rest of the result whether or not the consumer reads. A slow consumer can retain the whole
+remainder undecoded, and `:window_size` caps nothing (a 65 KiB window still queued 9 MB in the
+follow-up review's rerun); it tunes throughput. The first version of this entry called the
+window the bound, which was wrong. Bounding the
 transport itself needs a receive-flow change in elixir-grpc (Gun's `flow` plus `update_flow` as
 messages are consumed); Latu will not fork the locked adapter for it, so the limitation stands and
 the fix, if it comes, is upstream (finding 1 of the 2026-09-17 review).
@@ -1849,5 +1853,34 @@ measured 0.3 MB / 1 ms against 155 MB / 694 ms unreleased on 4.2.0. The after_fu
 end, an early `Enum.take`, and a raising consumer, so all three are reaped; it does not run when
 the consuming process is *killed* (`Task.shutdown`, a crash with no unwind), which still strands
 the execution and buffer until `interrupt/2` or the server timeout — one more reason the guidance
-is interrupt, never kill. The listener bus is excluded: its stream has no terminal until its
-remove command, so draining it could block.
+is interrupt, never kill. The listener bus is drained too, but only after its remove command
+succeeds (2026-09-18 below); a failed removal leaves it, since its stream has no terminal then.
+
+
+## 2026-09-18 — Follow-up review: the listener drain, zero-row Nx batches, and a doc correction
+
+A second review (2026-09-17) confirmed the earlier fixes and found three more things here.
+
+**The listener bus is drained after a successful removal.** The 2026-09-17 drain excluded it out
+of caution, and that stranded one response process per `events/1` cycle. But `finished/1` already
+sends the remove command (`close/1`) before the drain, and after a successful removal the events
+stream is terminal, so its tail can be read like any other. `close/1` now returns `:ok | :error`,
+and the drain runs on `:ok` (every result stream, and a bus whose removal succeeded). On `:error`
+the bus is still registered and its stream has no terminal, so reading would block; that one is
+left, and `close/1` has already logged why. The listener cycle in `streaming_test.exs` now asserts
+the reap, and `Latu.Lifecycle` (test support) is the shared process counter.
+
+**A zero-row batch no longer contradicts a populated one in `to_nx/2`.** `Result.Nx.build/3`
+dropped the zero-row/zero-width refusals to the right place: an empty batch (an empty partition,
+or a filtered-out result ahead of a full one) is discarded before width is inferred, so it neither
+votes on the shape nor trips the cross-batch width check. Only when every batch is empty is there
+no tensor, and that keeps its named refusal. The old "legal empty tensor" comment was wrong and is
+gone.
+
+**The streaming memory docs were wrong and are corrected.** The 2026-09-17 entry, the facade, the
+two docstrings, `usage-rules.md`, the cookbook and the primer all said or implied the transport
+buffers only "up to the stream window." It does not: Gun's application flow is `infinity` and it
+replenishes the window as it receives, so a slow consumer can accumulate the whole remainder
+locally (a 65 KiB window still queued 9 MB in the rerun). `stream/2` bounds *decoded* memory, one
+frame at a time, not *received* memory, and `:window_size` is a throughput setting. The facade now
+says so where the contract is read.
