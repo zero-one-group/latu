@@ -1884,3 +1884,28 @@ replenishes the window as it receives, so a slow consumer can accumulate the who
 locally (a 65 KiB window still queued 9 MB in the rerun). `stream/2` bounds *decoded* memory, one
 frame at a time, not *received* memory, and `:window_size` is a throughput setting. The facade now
 says so where the contract is read.
+
+## 2026-09-18 — Third review: a session is identified by server, user and id
+
+A third review (2026-09-18) found two things here. The first carried the release's one API
+addition.
+
+**The two-input verbs compare `Latu.Session.identity/1`, not the `session_id`.** `same_session!/2`
+matched on the id alone, so two servers handed the same explicit id passed the guard and the right
+side was planned against the left server — wrong rows, and no error from either server, since each
+saw a plan it could resolve. An id is unique per server, not per client, so the identity is
+`{host, port, user_id, session_id}`: the server reached, the user it was reached as, and the
+client id. A pinned copy, a tagged copy and two handles connected independently share it; two
+servers do not. Comparing whole structs stays rejected for the reason the old comment gave: a
+pinned handle differs from its original in incidental fields.
+
+It is a public function rather than a private tuple because `latu_ml` needs the same rule — its
+`delete/1` batches references by the session that made them and had the same id-only grouping.
+Publishing it is what makes 0.8.0 a minor, and why `latu_ml` 0.4.0 requires `~> 0.8`.
+
+**A zero-row dense-`Vector` batch is dropped before its discriminator is read.** 0.7.2 pruned an
+empty batch in `Result.Nx.build/3`, after the column had been classified — and a `Vector` column
+classifies itself by reading its `type` child, which a zero-row batch has no buffer for, so it
+read as sparse and refused the whole result. A zero-length column now becomes a droppable piece
+from its `values` child, the same shape as a zero-row list, and `build/3` prunes it as before. An
+all-empty result keeps its named no-rows refusal.
