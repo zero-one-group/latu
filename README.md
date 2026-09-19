@@ -25,7 +25,7 @@ predecessor, is Javanese for *fire*.
 
 ```elixir
 def deps do
-  [{:latu, "~> 0.7"}]
+  [{:latu, "~> 0.8"}]
 end
 ```
 
@@ -198,6 +198,15 @@ and a registered Java class all resolve the same way, and `CREATE FUNCTION` thro
 is how you register one. `Latu.add_jar/3` puts a jar on the session for such a class to resolve
 from, and `Latu.copy_to_fs/3` puts a file on the cluster's filesystem. Both take bytes: Latu
 reads nothing from your disk.
+
+## Status
+
+**Pre-1.0 in the way that matters**: a minor version may rename or remove, and `CHANGELOG.md`
+carries the migration in one line when it does. `~> 0.8` takes every later 0.x release;
+`~> 0.8.0` takes patches only.
+
+1.0 is not a coverage milestone. It marks an API that has stopped moving in other people's hands:
+a run of releases with no rename and no removal.
 
 ## Where to go next
 
