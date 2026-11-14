@@ -1,0 +1,131 @@
+# The integration suite against LakeSail, nightly and on demand, never on a PR: red is news
+# about Sail or about main, and blocks nothing. A test whose surface Sail lacks is tagged
+# `sail:` and left out; a second run reports any tagged test Sail now passes.
+# docs/lakesail.md.
+name: LakeSail
+
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: pysail version; empty for the latest release
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: LakeSail
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LATU_SERVER: sail
+    steps:
+      - uses: actions/checkout@v7
+
+      # The latest release unless one is asked for: a pinned Sail would only report on main.
+      - name: Sail version
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          latest=$(curl -fsSL https://pypi.org/pypi/pysail/json | jq -r .info.version)
+          echo "SAIL_VERSION=${REQUESTED:-$latest}" >> "$GITHUB_ENV"
+
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get --check-locked
+      - run: python3 -m venv dev/.venv && dev/.venv/bin/pip install -q -r dev/requirements.txt
+      - run: mix fixtures
+      - run: docker compose up -d --wait sail
+
+      - run: mix test 2>&1 | tee test.log
+        shell: bash
+
+      # Expected to fail. `--trace` prints a failure right under its test, which is how the
+      # summary tells the passes apart.
+      - name: Tagged gaps
+        if: always()
+        run: mix test --only sail --trace 2>&1 | tee gaps.log || true
+        shell: bash
+
+      - name: Result goldens
+        if: always()
+        run: LATU_GOLDEN=report mix test --only golden
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Integration suite on LakeSail $SAIL_VERSION"
+            echo
+            grep -E '^(Result|Failed): ' test.log || echo "No summary line: the suite did not finish."
+            if grep -qE '^ *[0-9]+\) test ' test.log; then
+              echo
+              echo '```'
+              grep -A3 -E '^ *[0-9]+\) test ' test.log
+              echo '```'
+            fi
+            echo
+            echo "## Tagged gaps Sail now passes"
+            echo
+            passed=$(awk '
+              /\* test / {
+                if (pending != "") print pending
+                line = $0; sub(/.*\r/, "", line); pending = ""
+                if (line ~ /\([0-9.]+m?s\) \[L#[0-9]+\]$/) pending = line
+                next
+              }
+              /^ *[0-9]+\) test / { pending = "" }
+              END { if (pending != "") print pending }
+            ' gaps.log)
+            if [ -n "$passed" ]; then
+              echo "Each is a \`sail:\` tag to drop, unless its reason says the answer is by chance."
+              echo
+              echo '```'
+              echo "$passed"
+              echo '```'
+            else
+              echo "None."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Golden diff
+        if: always()
+        run: |
+          {
+            echo "## Result goldens on LakeSail $SAIL_VERSION"
+            echo
+            changed=0
+            for actual in test/sql/*.actual; do
+              [ -e "$actual" ] || continue
+              name=$(basename "$actual" .actual)
+              if ! diff -q "test/sql/$name.answer" "$actual" >/dev/null 2>&1; then
+                changed=1
+                printf '<details><summary><code>%s</code></summary>\n\n```diff\n' "$name"
+                diff -u "test/sql/$name.answer" "$actual" || true
+                printf '```\n\n</details>\n\n'
+              fi
+            done
+            if [ "$changed" -eq 0 ]; then
+              echo "Identical to the committed goldens."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Sail logs
+        if: failure()
+        run: docker compose logs --no-color --tail=200 sail

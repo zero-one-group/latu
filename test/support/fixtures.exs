@@ -9,7 +9,7 @@ defmodule Latu.Fixtures do
   @doc "Refuse to start an integration run whose data files are missing, naming the command."
   @spec check!(keyword()) :: :ok
   def check!(config) do
-    if :integration in Keyword.get(config, :include, []) do
+    if integration?(config) do
       case Enum.reject(@required, &File.exists?(Path.join(@dir, &1))) do
         [] -> :ok
         missing -> raise missing_message(missing)
@@ -17,6 +17,12 @@ defmodule Latu.Fixtures do
     end
 
     :ok
+  end
+
+  # Included on the command line, or never excluded, which is how a LakeSail run turns it on.
+  defp integration?(config) do
+    :integration in Keyword.get(config, :include, []) or
+      :integration not in Keyword.get(config, :exclude, [])
   end
 
   defp missing_message(missing) do

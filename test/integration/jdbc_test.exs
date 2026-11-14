@@ -39,6 +39,7 @@ defmodule Latu.Integration.JdbcTest do
     ] ++ extra
   end
 
+  @tag sail: "JDBC is a data source Sail registers from Python only"
   test "a frame written over JDBC reads back, with no Latu code and no extra jar", %{
     session: session
   } do
@@ -63,6 +64,7 @@ defmodule Latu.Integration.JdbcTest do
            ]
   end
 
+  @tag sail: "JDBC is a data source Sail registers from Python only"
   test "a query pushed down as a subquery reads back too", %{session: session} do
     name = db()
 
@@ -88,6 +90,7 @@ defmodule Latu.Integration.JdbcTest do
     assert count == 3
   end
 
+  @tag sail: "JDBC is a data source Sail registers from Python only"
   test "the schema comes from the database, not from Latu", %{session: session} do
     name = db()
 

@@ -33,6 +33,7 @@ defmodule Latu.Integration.JoinTest do
   end
 
   describe "join_as_of/3" do
+    @tag sail: "no as-of join"
     test "backward matches the latest earlier row", %{trades: trades, quotes: quotes} do
       rows =
         trades
@@ -49,6 +50,7 @@ defmodule Latu.Integration.JoinTest do
              ]
     end
 
+    @tag sail: "no as-of join"
     test "forward matches the earliest later row", %{trades: trades, quotes: quotes} do
       rows =
         trades
@@ -61,6 +63,7 @@ defmodule Latu.Integration.JoinTest do
       assert rows == [%{size: 100, price: 30.0}, %{size: 200, price: 50.0}]
     end
 
+    @tag sail: "no as-of join"
     test "a left join keeps the unmatched row with nulls", %{trades: trades, quotes: quotes} do
       rows =
         trades
@@ -81,6 +84,7 @@ defmodule Latu.Integration.JoinTest do
              ]
     end
 
+    @tag sail: "no as-of join"
     test "a tolerance drops a match that is too far away", %{trades: trades, quotes: quotes} do
       # Every backward gap here is exactly 1, so a tolerance of 0 keeps nothing.
       assert trades
@@ -96,6 +100,7 @@ defmodule Latu.Integration.JoinTest do
     # key. Refusing them, each left row falls back to the latest STRICTLY earlier key — so
     # t=3 takes t=1 and t=5 takes t=3, and only t=1 has nothing to fall back to. Asserting the
     # prices rather than the count is what shows the skip actually happened.
+    @tag sail: "no as-of join"
     test "allow_exact_matches: false falls back to the previous key", %{
       quotes: quotes,
       session: session
@@ -127,6 +132,7 @@ defmodule Latu.Integration.JoinTest do
              ]
     end
 
+    @tag sail: "no as-of join"
     test "a frame joined to itself is ambiguous until each side is aliased", %{quotes: quotes} do
       assert {:error, %Latu.Error{message: message}} =
                quotes
@@ -180,6 +186,7 @@ defmodule Latu.Integration.JoinTest do
   end
 
   describe "nearest_by_join/4" do
+    @tag sail: "no nearest-by join"
     test "keeps the closest right rows by distance", %{session: session} do
       left = Latu.as(Latu.range(session, 3), "q")
       right = Latu.as(Latu.range(session, 10), "b")

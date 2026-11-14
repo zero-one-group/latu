@@ -42,6 +42,7 @@ defmodule Latu.Integration.ProgressTest do
     end
   end
 
+  @tag sail: "no execution progress messages"
   test "the server reports progress for a query that takes a moment", %{session: session} do
     {_owner, handler} = collector()
 
@@ -76,6 +77,7 @@ defmodule Latu.Integration.ProgressTest do
     assert {:ok, 5} = session |> Latu.range(5) |> Latu.count(progress: handler)
   end
 
+  @tag sail: "no execution progress messages"
   test "a handler that raises fails the query rather than being swallowed", %{session: session} do
     # It runs in the caller's own process, which is exactly why it cannot be swallowed. Latu
     # holds no process to isolate it in, and `Latu.Progress` says so.

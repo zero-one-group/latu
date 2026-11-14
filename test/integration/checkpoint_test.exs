@@ -48,6 +48,7 @@ defmodule Latu.Integration.CheckpointTest do
       :ok = Latu.release(cached)
     end
 
+    @tag sail: "explain shows a checkpoint as a file scan, not an RDD scan"
     test "the plan above the checkpoint is gone", %{session: session} do
       base = Latu.select_expr(Latu.range(session, 10), ["id * 3 as tripled"])
 
@@ -62,6 +63,7 @@ defmodule Latu.Integration.CheckpointTest do
       :ok = Latu.release(cached)
     end
 
+    @tag sail: "a local checkpoint takes no storage level"
     test "a local checkpoint takes a storage level", %{session: session} do
       cached = Latu.checkpoint!(Latu.range(session, 5), local: true, storage_level: :disk_only)
 
@@ -70,6 +72,7 @@ defmodule Latu.Integration.CheckpointTest do
       :ok = Latu.release(cached)
     end
 
+    @tag sail: "no lazy checkpoint"
     test "a lazy local checkpoint still names its relation", %{session: session} do
       # `eager: false` defers the materialisation to the next action, so the id comes back
       # before anything has been computed. There is nothing client-side that can tell the
@@ -84,6 +87,7 @@ defmodule Latu.Integration.CheckpointTest do
   end
 
   describe "release/1" do
+    @tag sail: "releasing a checkpoint does not invalidate it"
     test "a released id is refused by the server, not silently empty", %{session: session} do
       cached = Latu.checkpoint!(Latu.range(session, 5), local: true)
       assert {:ok, id} = Plan.cached_relation_id(cached.plan)
@@ -104,6 +108,7 @@ defmodule Latu.Integration.CheckpointTest do
   end
 
   describe "with_checkpoint/3" do
+    @tag sail: "releasing a checkpoint does not invalidate it"
     test "returns the function's value and releases on the way out", %{session: session} do
       base = Latu.range(session, 6)
 
@@ -116,6 +121,7 @@ defmodule Latu.Integration.CheckpointTest do
       assert {:error, %Latu.Error{kind: :rpc}} = Latu.collect(escaped)
     end
 
+    @tag sail: "releasing a checkpoint does not invalidate it"
     test "a raise inside the function still releases", %{session: session} do
       # The frame is captured by side effect precisely because the bracket will not hand it
       # back on this path, and the release is the thing under test.

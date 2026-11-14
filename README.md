@@ -30,7 +30,8 @@ end
 ```
 
 Requires Elixir 1.18 or newer and a Spark **4.2.0** Connect server. Another Spark:
-[Spark versions](https://hexdocs.pm/latu/spark-versions.html).
+[Spark versions](https://hexdocs.pm/latu/spark-versions.html). LakeSail:
+[LakeSail](https://hexdocs.pm/latu/lakesail.html).
 
 ## A server to talk to
 
@@ -226,6 +227,8 @@ a run of releases with no rename and no removal.
     it into its context.
   * [Spark versions](https://hexdocs.pm/latu/spark-versions.html). What a 4.2 client does
     against 4.1 and 4.0, measured; 3.5, newer servers, and the managed platforms.
+  * [LakeSail](https://hexdocs.pm/latu/lakesail.html). What works against the Rust Spark
+    Connect server, what it lacks, and where its answers differ from Spark's, measured.
   * [`docs/deviations.md`](https://hexdocs.pm/latu/deviations.html). A reference: every place the
     API departs from PySpark, and why.
   * [`CONTRIBUTING.md`](https://hexdocs.pm/latu/contributing.html). The servers, the proto

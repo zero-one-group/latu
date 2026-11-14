@@ -46,6 +46,7 @@ defmodule Latu.Integration.ArtifactTest do
     |> Enum.map(&Map.fetch!(&1, "Results"))
   end
 
+  @tag sail: "no AddArtifacts"
   test "a jar lands on the session, and LIST JARS shows it", %{session: session} do
     jar_name = name()
 
@@ -54,6 +55,7 @@ defmodule Latu.Integration.ArtifactTest do
     assert Enum.any?(listed(session), &String.ends_with?(&1, "/jars/" <> jar_name))
   end
 
+  @tag sail: "no AddArtifacts"
   test "identical bytes under one name are a no-op", %{session: session} do
     jar_name = name()
     bytes = jar("hello")
@@ -63,6 +65,7 @@ defmodule Latu.Integration.ArtifactTest do
     assert length(listed(session)) == 1
   end
 
+  @tag sail: "no AddArtifacts"
   test "different bytes under one name are refused", %{session: session} do
     jar_name = name()
 
@@ -73,6 +76,7 @@ defmodule Latu.Integration.ArtifactTest do
     assert error.message =~ jar_name
   end
 
+  @tag sail: "no AddArtifacts"
   test "a jar past one chunk uploads whole", %{session: session} do
     jar_name = name()
     big = jar(:crypto.strong_rand_bytes(96 * 1024))

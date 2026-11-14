@@ -48,17 +48,20 @@ defmodule Latu.Integration.ControlTest do
       %{fresh: fresh}
     end
 
+    @tag sail: "no GetStatus RPC"
     test "status/2 says so, rather than saying nothing is running", %{fresh: fresh} do
       assert {:error, error} = Latu.status(fresh)
       assert error.message =~ "the server has no session #{fresh.session_id}"
       assert error.message =~ "becomes real on the server when it first runs something"
     end
 
+    @tag sail: "no CloneSession RPC"
     test "clone_session/2 says the same", %{fresh: fresh} do
       assert {:error, error} = Latu.clone_session(fresh)
       assert error.message =~ "the server has no session"
     end
 
+    @tag sail: "no GetStatus RPC"
     test "interrupt/2 does not, because Spark's handler creates the session", %{fresh: fresh} do
       assert Latu.interrupt!(fresh) == []
 
@@ -66,12 +69,14 @@ defmodule Latu.Integration.ControlTest do
       assert {:ok, _statuses} = Latu.status(fresh)
     end
 
+    @tag sail: "releasing a session it has never seen is an error"
     test "release_session/2 does not either — a missing session is a noop", %{fresh: fresh} do
       assert {:ok, _released} = Latu.release_session(fresh)
     end
   end
 
   describe "interrupt/2" do
+    @tag sail: "no GetStatus RPC"
     test "cancels a tagged query, and status sees it running first", %{session: session} do
       worker = worker(session, "control-test")
       task = counting(worker)
@@ -86,6 +91,7 @@ defmodule Latu.Integration.ControlTest do
       refute_finished(task)
     end
 
+    @tag sail: "no GetStatus RPC"
     test "by operation id cancels only that one", %{session: session} do
       worker = worker(session, "control-test-op")
       task = counting(worker)
@@ -120,6 +126,7 @@ defmodule Latu.Integration.ControlTest do
     # The bug the first gate found: the request's operation_status field is what asks for
     # operation statuses at all, and Latu was leaving it absent when given no filter — so the
     # server correctly answered with none, forever. This is the test that would have caught it.
+    @tag sail: "no GetStatus RPC"
     test "with no filter, reports the operations the session has run", %{session: session} do
       statuses = Latu.status!(session)
 
@@ -127,10 +134,12 @@ defmodule Latu.Integration.ControlTest do
       assert Enum.all?(statuses, &(&1.operation_id != ""))
     end
 
+    @tag sail: "no GetStatus RPC"
     test "an idle session is running nothing of its own", %{session: session} do
       assert Enum.all?(Latu.status!(session), &(&1.state != :running))
     end
 
+    @tag sail: "no GetStatus RPC"
     test "a finished operation is reported, not forgotten", %{session: session} do
       before = MapSet.new(Latu.status!(session), & &1.operation_id)
       Latu.count!(Latu.range(session, 1))
@@ -140,6 +149,7 @@ defmodule Latu.Integration.ControlTest do
       assert MapSet.size(MapSet.difference(after_run, before)) >= 1
     end
 
+    @tag sail: "no GetStatus RPC"
     test "filtering by an id nobody has answers for it anyway, as :unknown", %{session: session} do
       id = "00000000-0000-4000-8000-000000000000"
 
@@ -151,6 +161,7 @@ defmodule Latu.Integration.ControlTest do
   end
 
   describe "clone_session/2" do
+    @tag sail: "no CloneSession RPC"
     test "the clone is a different session on the same channel", %{session: session} do
       clone = Latu.clone_session!(session)
 
@@ -161,6 +172,7 @@ defmodule Latu.Integration.ControlTest do
       Latu.release_session!(clone)
     end
 
+    @tag sail: "no CloneSession RPC"
     test "a temp view in the clone is invisible to the parent", %{session: session} do
       clone = Latu.clone_session!(session)
 
@@ -174,6 +186,7 @@ defmodule Latu.Integration.ControlTest do
       end
     end
 
+    @tag sail: "no CloneSession RPC"
     test "and a temp view made before the fork — Spark says state is preserved", %{
       session: session
     } do
@@ -198,6 +211,7 @@ defmodule Latu.Integration.ControlTest do
 
     # The id must be fresh on every run: Spark keeps closed session ids in `closedSessionsCache`
     # and refuses to clone into one (TARGET_SESSION_ID_ALREADY_CLOSED).
+    @tag sail: "no CloneSession RPC"
     test "and the server uses the id it was given", %{session: session} do
       id = Latu.Internal.UUID.v4()
       clone = Latu.clone_session!(session, session_id: id)
@@ -209,6 +223,7 @@ defmodule Latu.Integration.ControlTest do
   end
 
   describe "release_session/2" do
+    @tag sail: "no CloneSession RPC"
     test "ends the session but leaves the channel open", %{session: session} do
       clone = Latu.clone_session!(session)
 
@@ -219,6 +234,7 @@ defmodule Latu.Integration.ControlTest do
       assert Latu.spark_version!(session) != nil
     end
 
+    @tag sail: "no CloneSession RPC"
     test "a released session cannot be used again", %{session: session} do
       clone = Latu.clone_session!(session)
       Latu.release_session!(clone)
@@ -232,6 +248,7 @@ defmodule Latu.Integration.ControlTest do
   describe "disconnect/2" do
     # The default leaves the session for Spark to time out: a session can be borrowed by a
     # second channel (worker/2 below), so closing one must not end it. docs/decisions.md.
+    @tag sail: "no GetStatus RPC"
     test "closes the channel and leaves the session alone by default" do
       other = Latu.connect!(@url)
       Latu.count!(Latu.range(other, 1))

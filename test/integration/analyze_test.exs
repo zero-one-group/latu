@@ -38,6 +38,7 @@ defmodule Latu.Integration.AnalyzeTest do
       assert Latu.dtypes!(df) == [{"id", "bigint"}, {"name", "string"}]
     end
 
+    @tag sail: "analysis evaluates constant expressions, so 1 / 0 fails before execution"
     test "analysis needs no execution: a plan that cannot run still has a schema", %{
       session: session
     } do
@@ -207,6 +208,7 @@ defmodule Latu.Integration.AnalyzeTest do
   end
 
   describe "same_semantics/2 and semantic_hash/1" do
+    @tag sail: "no SameSemantics or SemanticHash"
     test "two frames built separately compute the same thing", %{session: session} do
       one = Latu.select(Latu.range(session, 10), [:id])
       two = Latu.select(Latu.range(session, 10), [:id])
@@ -215,6 +217,7 @@ defmodule Latu.Integration.AnalyzeTest do
       assert Latu.semantic_hash!(one) == Latu.semantic_hash!(two)
     end
 
+    @tag sail: "no SameSemantics or SemanticHash"
     test "and a different expression does not", %{session: session} do
       one = Latu.select(Latu.range(session, 10), x: :id)
       two = Latu.select(Latu.range(session, 10), x: multiply(:id, 2))
@@ -233,12 +236,14 @@ defmodule Latu.Integration.AnalyzeTest do
   end
 
   describe "persist, cache and unpersist" do
+    @tag sail: "persist and cache are no-ops, so no storage level is reported"
     test "an uncached frame is stored nowhere", %{session: session} do
       level = Latu.storage_level!(Latu.range(session, 5))
 
       assert %{use_memory: false, use_disk: false} = level
     end
 
+    @tag sail: "persist and cache are no-ops, so no storage level is reported"
     test "cache registers it at Spark's default level, and pipes", %{session: session} do
       df = Latu.range(session, 5)
 
@@ -273,6 +278,7 @@ defmodule Latu.Integration.AnalyzeTest do
       Latu.unpersist!(before)
     end
 
+    @tag sail: "persist and cache are no-ops, so no storage level is reported"
     test "persist takes one of Spark's names", %{session: session} do
       df = Latu.range(session, 6)
 
@@ -281,6 +287,7 @@ defmodule Latu.Integration.AnalyzeTest do
       Latu.unpersist!(df)
     end
 
+    @tag sail: "persist and cache are no-ops, so no storage level is reported"
     test "blocking: true is accepted", %{session: session} do
       df = Latu.range(session, 7)
 
@@ -298,6 +305,7 @@ defmodule Latu.Integration.AnalyzeTest do
              ]
     end
 
+    @tag sail: "a DDL parse turns char and varchar into string"
     test "and char and varchar survive a parse, where a query schema erases them", %{
       session: session
     } do

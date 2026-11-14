@@ -71,6 +71,7 @@ defmodule Latu.Integration.StreamingTest do
   end
 
   describe "an :available_now query over a bounded file source" do
+    @tag sail: "a streaming query cannot write to a file sink"
     test "drains the source and terminates by itself", %{session: session} do
       frame = stream(session, bounded_source(session))
       assert Latu.is_streaming!(frame)
@@ -107,6 +108,7 @@ defmodule Latu.Integration.StreamingTest do
       assert :ok = StreamingQuery.stop(query)
     end
 
+    @tag sail: "a streaming query cannot write to a file sink"
     test "with_stream/3 hands the function's result back and stops on the way out", %{
       session: session
     } do
@@ -121,6 +123,7 @@ defmodule Latu.Integration.StreamingTest do
       assert {:ok, false} = StreamingQuery.is_active(query)
     end
 
+    @tag sail: "a streaming query cannot write to a file sink"
     test "explain answers with the last batch's plan", %{session: session} do
       frame = stream(session, bounded_source(session))
 
@@ -183,6 +186,7 @@ defmodule Latu.Integration.StreamingTest do
   end
 
   describe "a handle the server does not know" do
+    @tag sail: "a streaming query cannot write to a file sink"
     test "is refused by class", %{session: session} do
       frame = stream(session, bounded_source(session))
       {:ok, query} = Latu.write_stream(frame, sink_opts(:available_now))
@@ -200,6 +204,7 @@ defmodule Latu.Integration.StreamingTest do
   # stays `:streaming`-tagged above; a terminated query settles the decode and the not-found
   # path on its own, because `await_termination` has already made the query done.
   describe "a query the session has finished" do
+    @tag sail: "a streaming query cannot write to a file sink"
     test "is nil from get/2 and absent from active/1", %{session: session} do
       frame = stream(session, bounded_source(session))
       {:ok, query} = Latu.write_stream(frame, sink_opts(:available_now))

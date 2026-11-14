@@ -157,6 +157,17 @@ docker compose down
 `versions` input. No cron: a scheduled run against the version `mix check.all` already covers is
 a green job nobody reads.
 
+## LakeSail
+
+The `sail` service in `docker-compose.yml` is behind a profile and takes the Spark servers'
+ports. `LATU_SERVER=sail mix test` runs the suite against it, minus the tests tagged `sail:`.
+Commands, the tags, and what Sail lacks: `docs/lakesail.md`. `.github/workflows/lakesail.yml`
+runs it nightly against Sail's latest release; it is the one scheduled job, because a new Sail
+release is news that `mix check.all` cannot deliver.
+
+When a tagged test passes in the nightly summary, take the tag off. When a new test fails only on
+Sail, tag it with the reason, in Sail's terms ("no CollectMetrics"), not the test's.
+
 ## The function library
 
 Three scripts, and none of them invents anything.

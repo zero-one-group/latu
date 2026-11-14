@@ -47,6 +47,33 @@ services:
     volumes:
       - ./fixtures:/fixtures:ro
 
+  # LakeSail, for the nightly compatibility run (docs/lakesail.md). A profile, so a bare `up`
+  # leaves it out: it publishes the Spark servers' ports, one process behind both.
+  sail:
+    profiles: ["sail"]
+    image: latu-sail:${SAIL_VERSION:-0.7.3}
+    container_name: latu-sail
+    # LakeSail publishes no image; this is its own quick-start recipe. PySpark is there because
+    # Sail answers `spark_version` by importing it.
+    build:
+      dockerfile_inline: |
+        FROM python:3.13-slim
+        RUN pip install --no-cache-dir "pysail==${SAIL_VERSION:-0.7.3}" "pyspark-client==4.2.0"
+    command: ["sail", "spark", "server", "--ip", "0.0.0.0", "--port", "15002"]
+    ports:
+      - "15002:15002"
+      - "15003:15002"
+    environment:
+      SAIL_EXECUTION__CHECKPOINT__PATH: /tmp/latu_checkpoints
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 15002), 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 36
+      start_period: 5s
+    volumes:
+      - ./fixtures:/fixtures:ro
+
   spark-reattach:
     image: apache/spark:${SPARK_VERSION:-4.2.0}
     container_name: latu-spark-reattach

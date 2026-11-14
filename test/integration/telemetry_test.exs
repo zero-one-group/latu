@@ -81,6 +81,7 @@ defmodule Latu.Integration.TelemetryTest do
     assert batch.bytes > 0
   end
 
+  @tag sail: "an undefined conf reads as nil, not SQL_CONF_NOT_FOUND"
   test "a failing RPC reports its outcome and its error class", %{session: session} do
     assert {:error, %Error{}} = Latu.fetch_conf(session, "latu.no.such.conf")
 

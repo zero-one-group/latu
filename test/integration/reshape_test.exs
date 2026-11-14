@@ -150,6 +150,7 @@ defmodule Latu.Integration.ReshapeTest do
       }
     end
 
+    @tag sail: "no grouping sets beside grouping expressions"
     test "an empty set is the grand total, and the server takes it", %{df: df} do
       rows =
         df
@@ -163,6 +164,7 @@ defmodule Latu.Integration.ReshapeTest do
       assert Enum.any?(rows, &(&1.region == "north" and &1.year == nil and &1.total == 3.0))
     end
 
+    @tag sail: "no grouping sets beside grouping expressions"
     test "the same sets rollup would produce give rollup's answer", %{df: df} do
       sets =
         df
@@ -237,6 +239,7 @@ defmodule Latu.Integration.ReshapeTest do
       %{df: Latu.create_dataframe!(session, columns, schema: "id INT, name STRING")}
     end
 
+    @tag sail_crash: "sorting the result of to/2 kills the Sail process"
     test "matches by NAME: reorders, and widens int to bigint", %{session: session, df: df} do
       type = Latu.parse_ddl_type!(session, "name STRING, id BIGINT")
       reconciled = Latu.to(df, type)
@@ -256,6 +259,7 @@ defmodule Latu.Integration.ReshapeTest do
     # Measured, and it contradicts `Dataset.to`'s own scaladoc: `Project.reorderFields` fills a
     # missing *nullable* target field with a null literal, and only a non-nullable one raises.
     # DDL declares nullable by default, so this is the case people hit first.
+    @tag sail: "to/2 refuses a missing nullable column rather than filling nulls"
     test "a missing column the target lets be null becomes nulls, not an error", %{
       session: session,
       df: df
@@ -289,6 +293,7 @@ defmodule Latu.Integration.ReshapeTest do
   end
 
   describe "transpose/2" do
+    @tag sail: "no transpose"
     test "the index column's values become column names", %{session: session} do
       columns = [metric: ["alpha", "beta"], q1: [1.0, 3.0], q2: [2.0, 4.0]]
 

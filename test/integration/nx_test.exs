@@ -52,6 +52,7 @@ defmodule Latu.Integration.NxTest do
     end
 
     # The pairing that justifies the verb existing at all.
+    @tag sail: "no array_to_vector, so no Vector column"
     test "a Vector column reads here and nowhere else", %{vectors: vectors} do
       assert {:error, error} = Latu.collect(vectors)
       assert error.message =~ "UDT that does not say its SQL type"
@@ -67,6 +68,7 @@ defmodule Latu.Integration.NxTest do
 
     # If Spark ever reorders or renames those children, this goes red and `Latu.Result.Nx`'s
     # `@vector_udt` is what has to change. Nothing else in the suite would notice.
+    @tag sail: "no array_to_vector, so no Vector column"
     test "Spark writes a Vector as the struct the reader expects", %{vectors: vectors} do
       assert {:ok, [batch | _]} = Latu.to_arrow(vectors)
       assert {:ok, [{"v", :struct}]} = Latu.Result.Arrow.schema(batch)

@@ -68,6 +68,7 @@ defmodule Latu.Integration.RelationsTest do
       assert rows == [%{id: 0, sq: 0}, %{id: 1, sq: 1}, %{id: 2, sq: 4}]
     end
 
+    @tag sail: "no star tagged with a plan id"
     test "tagged with a frame is every column of that frame", %{session: session} do
       left = Latu.range(session, 2)
       right = session |> Latu.range(2) |> Latu.with_columns(sq: Column.multiply(:id, :id))
@@ -92,6 +93,7 @@ defmodule Latu.Integration.RelationsTest do
   end
 
   describe "metadata_column/2" do
+    @tag sail: "no metadata columns"
     test "a file source carries _metadata, which the schema does not list", %{people: people} do
       refute "_metadata" in Latu.columns!(people)
 
@@ -105,6 +107,7 @@ defmodule Latu.Integration.RelationsTest do
       assert path =~ "people.csv"
     end
 
+    @tag sail: "no metadata columns"
     test "metadata_column/2 asks for it by name", %{people: people} do
       assert people
              |> Latu.select(meta: Latu.metadata_column(people, "_metadata"))
@@ -151,6 +154,7 @@ defmodule Latu.Integration.RelationsTest do
   end
 
   describe "parse/2" do
+    @tag sail: "no Parse relation"
     test "json strings become a structured frame", %{session: session} do
       strings =
         Latu.select_expr(Latu.range(session, 3), [
@@ -168,6 +172,7 @@ defmodule Latu.Integration.RelationsTest do
              ]
     end
 
+    @tag sail: "no Parse relation"
     test "an explicit schema goes through parse_ddl_type/2", %{session: session} do
       strings = Latu.select_expr(Latu.range(session, 2), [~s|concat('{"n": ', id, '}') as value|])
 
@@ -180,6 +185,7 @@ defmodule Latu.Integration.RelationsTest do
       assert Latu.dtypes!(parsed) == [{"n", "int"}]
     end
 
+    @tag sail: "no Parse relation"
     test "csv strings parse too", %{session: session} do
       strings = Latu.select_expr(Latu.range(session, 2), [~s|concat(id, ',x') as value|])
 
@@ -188,6 +194,7 @@ defmodule Latu.Integration.RelationsTest do
   end
 
   describe "table_function/3" do
+    @tag sail: "no table-valued function by name"
     test "explode over an array literal", %{session: session} do
       rows =
         session
@@ -197,6 +204,7 @@ defmodule Latu.Integration.RelationsTest do
       assert length(rows) == 2
     end
 
+    @tag sail: "no table-valued function by name"
     test "one that takes no arguments", %{session: session} do
       assert session |> Latu.table_function("sql_keywords") |> Latu.count!() > 0
     end
@@ -208,6 +216,7 @@ defmodule Latu.Integration.RelationsTest do
   end
 
   describe "zip_with_index/2" do
+    @tag sail: "no distributed_sequence_id, so no zip_with_index"
     test "indices are consecutive from zero across the whole frame", %{session: session} do
       rows = Latu.collect!(Latu.zip_with_index(Latu.range(session, 5)))
 
@@ -215,6 +224,7 @@ defmodule Latu.Integration.RelationsTest do
       assert Enum.map(rows, & &1.id) == [0, 1, 2, 3, 4]
     end
 
+    @tag sail: "no distributed_sequence_id, so no zip_with_index"
     test "the index column is named as asked, and is a long", %{session: session} do
       df = Latu.zip_with_index(Latu.range(session, 3), :row_num)
 

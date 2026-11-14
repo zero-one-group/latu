@@ -80,6 +80,27 @@ defmodule Latu.ClientTest do
       end
     end
 
+    # What LakeSail 0.7.3 answers for a feature it lacks: the feature's name, under
+    # UnsupportedOperationException, with no error class.
+    test "a feature the server lacks says so when the server did not", %{session: session} do
+      refused = fn -> unsupported("collect metrics", %{}) end
+
+      assert {:error, %Error{status: 13, error_class: nil, message: message}} =
+               Client.retrying("ExecutePlan", session, refused)
+
+      assert message =~ "collect metrics"
+      assert message =~ "the server does not support this"
+    end
+
+    test "but Spark's own refusal, which carries a class, is left as Spark wrote it", %{
+      session: session
+    } do
+      text = "[UNSUPPORTED_FEATURE.PANDAS_UDAF_IN_PIVOT] Pandas UDAF in pivot."
+      refused = fn -> unsupported(text, %{"errorClass" => "UNSUPPORTED_FEATURE"}) end
+
+      assert {:error, %Error{message: ^text}} = Client.retrying("ExecutePlan", session, refused)
+    end
+
     test "each attempt is a retry event naming the RPC", %{session: session} do
       # A remote capture, as telemetry_test does: `:telemetry.attach/4` logs about a local
       # one. The handler is global, so it forwards this session's events alone.
@@ -110,6 +131,22 @@ defmodule Latu.ClientTest do
       end
 
       {calls, call}
+    end
+
+    # An INTERNAL refusal whose ErrorInfo names `UnsupportedOperationException`, as the
+    # `grpc-status-details-bin` trailer carries it.
+    defp unsupported(message, metadata) do
+      classes = ~s(["java.lang.UnsupportedOperationException"])
+      info = %Google.Rpc.ErrorInfo{metadata: Map.put(metadata, "classes", classes)}
+
+      details = [
+        %Google.Protobuf.Any{
+          type_url: "type.googleapis.com/google.rpc.ErrorInfo",
+          value: Google.Rpc.ErrorInfo.encode(info)
+        }
+      ]
+
+      {:error, %GRPC.RPCError{status: 13, message: message, details: details}}
     end
   end
 
