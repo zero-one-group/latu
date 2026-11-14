@@ -42,3 +42,7 @@ latu-*.tar
 
 # test/sql/*.answer is committed; *.actual is what LATU_GOLDEN=report writes.
 /test/sql/*.actual
+
+# Claude Code, per-maintainer
+/.claude/settings.local.json
+/CLAUDE.local.md
