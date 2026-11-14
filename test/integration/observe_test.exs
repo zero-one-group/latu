@@ -34,6 +34,7 @@ defmodule Latu.Integration.ObserveTest do
   defp tmp_path, do: "/tmp/latu_test/#{@run}_#{System.unique_integer([:positive])}"
 
   describe "collect_with_metrics/2" do
+    @tag sail: "no CollectMetrics"
     test "the metrics come back beside the rows", %{df: df} do
       {:ok, rows, info} =
         df
@@ -44,6 +45,7 @@ defmodule Latu.Integration.ObserveTest do
       assert length(rows) == 8
     end
 
+    @tag sail: "no CollectMetrics"
     test "an aggregate that counts nulls, which is what people observe for", %{df: df} do
       {:ok, _rows, info} =
         df
@@ -55,6 +57,7 @@ defmodule Latu.Integration.ObserveTest do
       assert %{quality: %{rows: 8, scored: 5}} = info.observed
     end
 
+    @tag sail: "no CollectMetrics"
     test "two observations in one plan both report", %{df: df} do
       {:ok, _rows, info} =
         df
@@ -66,6 +69,7 @@ defmodule Latu.Integration.ObserveTest do
       assert %{before: %{all: 8}, after: %{kept: 5}} = info.observed
     end
 
+    @tag sail: "no CollectMetrics"
     test "a non-integer metric decodes through Latu.Result.Literal", %{df: df} do
       {:ok, _rows, info} =
         df
@@ -76,6 +80,7 @@ defmodule Latu.Integration.ObserveTest do
       assert %{spread: %{lowest: 10.0, mean: 34.0}} = info.observed
     end
 
+    @tag sail: "no CollectMetrics"
     test "the frame itself is unchanged by observing it", %{df: df} do
       {:ok, rows, _info} =
         df |> Latu.observe(:checks, n: F.count(lit(1))) |> Latu.collect_with_metrics()
@@ -86,6 +91,7 @@ defmodule Latu.Integration.ObserveTest do
     # The other half of an ExecutionInfo. Spark decides what to report, so this asserts
     # the shape rather than any particular metric — the claim is that Latu no longer drops the
     # arm, not that a given node exists.
+    @tag sail: "no CollectMetrics"
     test "Spark's own SQL metrics come back beside the observed ones", %{df: df} do
       {:ok, _rows, info} = Latu.collect_with_metrics(Latu.observe(df, :n, c: F.count(lit(1))))
 
@@ -115,6 +121,7 @@ defmodule Latu.Integration.ObserveTest do
   end
 
   describe "count_with_metrics/1 and to_explorer_with_metrics/2" do
+    @tag sail: "no CollectMetrics"
     test "count reports both its own answer and the metrics", %{df: df} do
       {:ok, count, info} =
         df |> Latu.observe(:checks, total: F.count(lit(1))) |> Latu.count_with_metrics()
@@ -122,6 +129,7 @@ defmodule Latu.Integration.ObserveTest do
       assert %{checks: %{total: ^count}} = info.observed
     end
 
+    @tag sail: "no CollectMetrics"
     test "to_explorer reports beside the frame", %{df: df} do
       {:ok, frame, info} =
         df |> Latu.observe(:checks, total: F.count(lit(1))) |> Latu.to_explorer_with_metrics()
@@ -132,6 +140,7 @@ defmodule Latu.Integration.ObserveTest do
   end
 
   describe "write_with_metrics/2 — the case observe exists for" do
+    @tag sail: "no CollectMetrics"
     test "a write reports the metrics its input observed", %{df: df} do
       path = tmp_path()
 
@@ -155,6 +164,7 @@ defmodule Latu.Integration.ObserveTest do
       assert observed == %{}
     end
 
+    @tag sail: "no CollectMetrics"
     test "save_as_table reports too", %{df: df} do
       table = "observed_#{@run}_#{System.unique_integer([:positive])}"
 
@@ -164,6 +174,7 @@ defmodule Latu.Integration.ObserveTest do
                |> Latu.save_as_table_with_metrics(table, mode: :overwrite)
     end
 
+    @tag sail: "no CollectMetrics"
     test "a twin takes :progress, and it reaches the transport", %{df: df} do
       # A handler that is never called cannot be told apart from one the server had no report for
       # — the query is too short for the 100ms interval — so the assertion is that the option
@@ -186,6 +197,7 @@ defmodule Latu.Integration.ObserveTest do
     # when nobody calls Observation.get. The server accepts a CollectMetrics node under a read
     # and under a join exactly as it does under a write — which is the half a unit test cannot
     # see.
+    @tag sail: "no CollectMetrics"
     test "reads run and do not report", %{df: df} do
       observed = Latu.observe(df, :checks, total: F.count(lit(1)))
 
@@ -197,6 +209,7 @@ defmodule Latu.Integration.ObserveTest do
       assert {:ok, [_ | _]} = Latu.collect(observed)
     end
 
+    @tag sail: "no CollectMetrics"
     test "an observed frame composes into a join and a view", %{df: df, session: session} do
       observed = Latu.observe(df, :checks, total: F.count(lit(1)))
 

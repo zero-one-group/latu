@@ -30,6 +30,7 @@ defmodule Latu.Integration.StatTest do
   end
 
   describe "summary/2 and describe/2" do
+    @tag sail: "describe and summary return their rows in no fixed order"
     test "summary's default eight, in Spark's order", %{df: df} do
       rows = df |> Latu.summary() |> Latu.collect!()
 
@@ -37,6 +38,7 @@ defmodule Latu.Integration.StatTest do
                ["count", "mean", "stddev", "min", "25%", "50%", "75%", "max"]
     end
 
+    @tag sail: "describe and summary return their rows in no fixed order"
     test "only the statistics named", %{df: df} do
       rows = df |> Latu.summary(["count", "max"]) |> Latu.collect!()
 
@@ -45,6 +47,7 @@ defmodule Latu.Integration.StatTest do
       assert [%{score: "5"}, %{score: "70.0"}] = rows
     end
 
+    @tag sail: "describe and summary return their rows in no fixed order"
     test "describe is the fixed five", %{df: df} do
       rows = df |> Latu.describe() |> Latu.collect!()
 
@@ -59,6 +62,7 @@ defmodule Latu.Integration.StatTest do
   end
 
   describe "crosstab/3" do
+    @tag sail: "crosstab names a null key nil, not \"null\""
     test "counts the pairs, with Spark's own column naming", %{df: df} do
       rows = df |> Latu.crosstab(:team, :id) |> Latu.collect!(keys: :strings)
 
@@ -73,6 +77,7 @@ defmodule Latu.Integration.StatTest do
   end
 
   describe "freq_items/3" do
+    @tag sail: "no freq_items"
     test "finds every distinct value when support is low enough", %{df: df} do
       [row] = df |> Latu.freq_items([:score]) |> Latu.collect!(keys: :strings)
 
@@ -101,15 +106,18 @@ defmodule Latu.Integration.StatTest do
   end
 
   describe "the three that collect a scalar" do
+    @tag sail: "cov and corr drop a row with a null rather than reading it as zero"
     test "cov reads a null as zero rather than dropping the row", %{df: df} do
       # 248.75 / 7 over all eight rows, nulls as 0.0 — not 220 / 3 over the four full ones.
       assert_in_delta Latu.cov!(df, :score, :weight), 248.75 / 7, 0.0001
     end
 
+    @tag sail: "cov and corr drop a row with a null rather than reading it as zero"
     test "and so does corr", %{df: df} do
       assert_in_delta Latu.corr!(df, :score, :weight), 0.5433975, 0.0001
     end
 
+    @tag sail: "cov and corr drop a row with a null rather than reading it as zero"
     test "which is a different answer from the aggregate of the same name", %{df: df} do
       # `F.covar_samp` drops a row where either value is null; `cov/3` zeroes it. Same data,
       # same question, two numbers — Spark's, not Latu's. 220 / 3 is the four rows where score
@@ -125,14 +133,17 @@ defmodule Latu.Integration.StatTest do
                Latu.corr!(df, :score, :weight)
     end
 
+    @tag sail: "no approx_quantile"
     test "approx_quantile: one name gives one flat list", %{df: df} do
       assert Latu.approx_quantile!(df, :score, [0.0, 0.5, 1.0], 0.0) == [10.0, 30.0, 70.0]
     end
 
+    @tag sail: "no approx_quantile"
     test "a list of names gives a list per column", %{df: df} do
       assert Latu.approx_quantile!(df, [:score, :weight], [0.5], 0.0) == [[30.0], [3.0]]
     end
 
+    @tag sail: "no approx_quantile"
     test "and a column with no non-null values gives an empty one", %{blank: blank} do
       assert Latu.approx_quantile!(blank, :score, [0.5], 0.0) == []
     end

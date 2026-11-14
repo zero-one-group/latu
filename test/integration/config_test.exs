@@ -36,6 +36,7 @@ defmodule Latu.Integration.ConfigTest do
   end
 
   describe "conf/2" do
+    @tag sail: "the session time zone reads Etc/UTC, not UTC"
     test "reads what the server was started with", %{session: session} do
       assert Latu.conf!(session, "spark.sql.session.timeZone") == "UTC"
       assert Latu.conf!(session, "spark.sql.shuffle.partitions") == "4"
@@ -59,6 +60,7 @@ defmodule Latu.Integration.ConfigTest do
       assert Latu.fetch_conf!(session, @unset) == Latu.conf!(session, @unset)
     end
 
+    @tag sail: "an undefined conf reads as nil, not SQL_CONF_NOT_FOUND"
     test "a key Spark does not define is an error, not an empty answer", %{session: session} do
       assert {:error, %Error{} = error} = Latu.fetch_conf(session, "latu.test.nope")
       assert error.error_class == "SQL_CONF_NOT_FOUND"
@@ -78,6 +80,7 @@ defmodule Latu.Integration.ConfigTest do
       assert is_binary(Latu.conf!(session, @unset))
     end
 
+    @tag sail: "a conf's default is not type-checked"
     test "the default is type-checked against the conf it belongs to", %{session: session} do
       assert {:error, %Error{}} = Latu.conf(session, @unset, "not a number")
     end
@@ -88,6 +91,7 @@ defmodule Latu.Integration.ConfigTest do
   end
 
   describe "confs/2" do
+    @tag sail: "the session time zone reads Etc/UTC, not UTC"
     test "is what the session has set, not the registry", %{session: session} do
       confs = Latu.confs!(session)
 
@@ -96,6 +100,7 @@ defmodule Latu.Integration.ConfigTest do
       assert map_size(confs) < 100
     end
 
+    @tag sail: "a prefixed listing doubles the prefix in every key"
     test "a prefix filters on the server and the keys come back whole", %{session: session} do
       confs = Latu.confs!(session, prefix: "spark.sql.")
 
@@ -121,6 +126,7 @@ defmodule Latu.Integration.ConfigTest do
       assert {:error, %Error{}} = Latu.set_conf(session, "spark.sql.shuffle.partitions", "eight")
     end
 
+    @tag sail: "static confs can be set and unset"
     test "a static conf is refused, and is_modifiable/2 says so first", %{session: session} do
       key = "spark.sql.warehouse.dir"
 
@@ -156,6 +162,7 @@ defmodule Latu.Integration.ConfigTest do
       assert Latu.conf!(session, "latu.test.b") == "two"
     end
 
+    @tag sail: "static confs can be set and unset"
     test "a rejected conf fails the call, and the ones after it are not set", %{session: session} do
       pairs = [{"spark.sql.warehouse.dir", "/tmp/latu-nope"}, {"latu.test.after", "yes"}]
 
@@ -178,6 +185,7 @@ defmodule Latu.Integration.ConfigTest do
       assert :ok = Latu.unset_conf(session, "latu.test.never")
     end
 
+    @tag sail: "static confs can be set and unset"
     test "a static conf is refused here too", %{session: session} do
       assert {:error, %Error{}} = Latu.unset_conf(session, "spark.sql.warehouse.dir")
     end

@@ -141,6 +141,7 @@ defmodule Latu.Integration.CreateDataFrameTest do
     # The threshold and chunk bounds are session configs, so a lowered threshold makes a tiny
     # frame take the artifact path — the same code that 64 MiB would exercise, without moving
     # 64 MiB. Session-scoped, and every test connects fresh, so nothing leaks.
+    @tag sail: "no AddArtifacts"
     test "data escalates to cached artifacts and reads back whole", %{session: session} do
       {:ok, _} = Latu.sql(session, "SET spark.sql.session.localRelationCacheThreshold=1024")
       {:ok, _} = Latu.sql(session, "SET spark.sql.session.localRelationChunkSizeRows=100")
@@ -156,6 +157,7 @@ defmodule Latu.Integration.CreateDataFrameTest do
       assert df |> Latu.sort([:id]) |> Latu.take!(1) == [%{id: 1, label: "row-1"}]
     end
 
+    @tag sail: "no AddArtifacts"
     test "a schema uploads as its own chunk and still casts", %{session: session} do
       {:ok, _} = Latu.sql(session, "SET spark.sql.session.localRelationCacheThreshold=64")
 
@@ -168,6 +170,7 @@ defmodule Latu.Integration.CreateDataFrameTest do
       assert Explorer.DataFrame.dtypes(frame) == %{"a" => {:s, 32}}
     end
 
+    @tag sail: "no AddArtifacts"
     test "the same data twice: the second upload finds it cached", %{session: session} do
       {:ok, _} = Latu.sql(session, "SET spark.sql.session.localRelationCacheThreshold=64")
 

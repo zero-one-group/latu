@@ -68,7 +68,15 @@ defmodule Latu.Integration.GuidesTest do
     assert Enum.sort(skipped) == Enum.sort(@illustrative)
   end
 
+  # A guide that uses a surface LakeSail lacks; docs/lakesail.md.
+  @sail %{
+    "docs/guides/cookbook.md" => "observe/3 needs CollectMetrics",
+    "docs/guides/from-explorer.md" => "copy_to_fs/3 needs AddArtifacts"
+  }
+
   for guide <- @guides do
+    if reason = @sail[guide], do: @tag(sail: reason)
+
     test "#{guide}" do
       run(unquote(guide))
     end

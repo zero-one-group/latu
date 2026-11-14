@@ -93,6 +93,7 @@ defmodule Latu.Integration.HigherOrderTest do
     assert shown(df) =~ "[2, 4, 6]"
   end
 
+  @tag sail: "no zip_with"
   test "zip_with pairs two arrays", %{session: session} do
     zipped = F.zip_with(F.array([1, 2]), F.array([10, 20]), fn x, y -> add(x, y) end)
 

@@ -75,6 +75,7 @@ defmodule Latu.Integration.WindowTest do
     assert by_range |> collect() |> column("s") == [0, 3, 6, 9]
   end
 
+  @tag sail: "accepts a frame row_number cannot use"
   test "Spark refuses a frame row_number cannot use", %{session: session} do
     # row_number requires exactly ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW. The plan
     # encodes fine, so nothing offline can catch this.

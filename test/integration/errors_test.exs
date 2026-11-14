@@ -30,10 +30,12 @@ defmodule Latu.Integration.ErrorsTest do
       %{error: error}
     end
 
+    @tag sail: "errors carry no error class, SQLSTATE, parameters or error id"
     test "the Spark error class, which is what the docs are indexed by", %{error: error} do
       assert error.error_class =~ "UNRESOLVED_COLUMN"
     end
 
+    @tag sail: "errors carry no error class, SQLSTATE, parameters or error id"
     test "the SQLSTATE", %{error: error} do
       assert is_binary(error.sql_state)
       assert error.sql_state != ""
@@ -44,11 +46,13 @@ defmodule Latu.Integration.ErrorsTest do
       assert most_specific =~ "AnalysisException"
     end
 
+    @tag sail: "errors carry no error class, SQLSTATE, parameters or error id"
     test "the message parameters, so you need not parse the sentence", %{error: error} do
       assert is_map(error.parameters)
       assert error.parameters["objectName"] =~ "nope"
     end
 
+    @tag sail: "errors carry no error class, SQLSTATE, parameters or error id"
     test "an error id, which is the handle error_details/2 uses", %{error: error} do
       assert is_binary(error.error_id)
     end
@@ -57,6 +61,7 @@ defmodule Latu.Integration.ErrorsTest do
       assert is_nil(error.stacktrace) or is_binary(error.stacktrace)
     end
 
+    @tag sail: "errors carry no error class, SQLSTATE, parameters or error id"
     test "and the message still reads as Spark wrote it", %{error: error} do
       # The class is already in Spark's own message, so message/1 must not print it twice.
       rendered = Exception.message(error)
@@ -67,6 +72,7 @@ defmodule Latu.Integration.ErrorsTest do
   end
 
   describe "error_details/2" do
+    @tag sail: "FetchErrorDetails returns no causes"
     test "fills the cause chain for a runtime failure", %{session: session} do
       {:error, error} =
         session
@@ -86,6 +92,7 @@ defmodule Latu.Integration.ErrorsTest do
 
     # The gRPC status message is `Utils.abbreviate(getMessage, 2048)`; the detail is whole, and
     # an error that arrives cut is the one case Latu fetches it for without being asked.
+    @tag sail: "FetchErrorDetails returns no causes"
     test "a message the status abbreviated arrives whole, with its causes", %{session: session} do
       long = String.duplicate("x", 3000)
 

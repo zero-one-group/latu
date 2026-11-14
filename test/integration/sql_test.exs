@@ -72,6 +72,7 @@ defmodule Latu.Integration.SqlTest do
       assert :ok = Latu.create_temp_view(df, "v_twice", replace: true)
     end
 
+    @tag sail: "an unknown table is refused at execution, not by sql/3"
     test "views: names a DataFrame into one query and registers nothing", %{session: session} do
       orders = session |> Latu.range(5) |> Latu.filter(Latu.Column.greater(:id, 1))
 
@@ -102,6 +103,7 @@ defmodule Latu.Integration.SqlTest do
       assert Catalog.database_exists(session, "no_such_db") == {:ok, false}
     end
 
+    @tag sail: "a table listing names the column tableName, not name"
     test "a temp view shows up in the listing, marked temporary", %{session: session} do
       :ok = session |> Latu.range(3) |> Latu.create_temp_view("v_listed")
 
@@ -119,6 +121,7 @@ defmodule Latu.Integration.SqlTest do
       assert %{name: "id", dataType: "bigint"} = Map.take(column, [:name, :dataType])
     end
 
+    @tag sail: "no IsCached"
     test "cache, check, uncache", %{session: session} do
       :ok = session |> Latu.range(3) |> Latu.create_temp_view("v_cached")
 
@@ -129,6 +132,7 @@ defmodule Latu.Integration.SqlTest do
       assert Catalog.is_cached(session, "v_cached") == {:ok, false}
     end
 
+    @tag sail: "no DropTable"
     test "drop_table: if_exists tolerates a missing table, bare does not", %{session: session} do
       assert Catalog.drop_table(session, "latu_never_created", if_exists: true) == :ok
       assert {:error, %Latu.Error{}} = Catalog.drop_table(session, "latu_never_created")

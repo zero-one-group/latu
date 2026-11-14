@@ -38,6 +38,7 @@ defmodule Latu.Integration.CopyToFsTest do
     |> Latu.collect!()
   end
 
+  @tag sail: "no AddArtifacts"
   test "bytes land at the path and Spark reads them back", %{session: session} do
     allow_local(session)
     file = path("csv")
@@ -46,6 +47,7 @@ defmodule Latu.Integration.CopyToFsTest do
     assert [%{id: 1, name: "Ada"}, %{id: 2, name: "Bo"}] = rows(session, file)
   end
 
+  @tag sail: "no AddArtifacts"
   test "a second copy to the same path overwrites, unlike a jar", %{session: session} do
     allow_local(session)
     file = path("csv")
@@ -55,6 +57,7 @@ defmodule Latu.Integration.CopyToFsTest do
     assert [_, _, _] = rows(session, file)
   end
 
+  @tag sail: "no AddArtifacts"
   test "a file past one chunk arrives whole", %{session: session} do
     allow_local(session)
     file = path("csv")

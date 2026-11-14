@@ -25,6 +25,7 @@ defmodule Latu.Integration.UdfTest do
     %{session: session}
   end
 
+  @tag sail: "no CREATE FUNCTION"
   test "fun/3 reaches a function the session registered, not only a builtin", %{
     session: session
   } do
@@ -47,6 +48,7 @@ defmodule Latu.Integration.UdfTest do
            ]
   end
 
+  @tag sail: "an unknown function has no Spark error class"
   test "a name nothing registered is refused by the analyzer, by error class", %{
     session: session
   } do
@@ -59,6 +61,7 @@ defmodule Latu.Integration.UdfTest do
   # An assertion about Spark rather than about Latu: `CloneSession` is documented as preserving
   # "configuration and state", and `SparkSession.cloneSession` copies the SessionCatalog, which
   # holds temp views and temp functions alike.
+  @tag sail: "no CREATE FUNCTION"
   test "a registered function is session state, so a clone inherits it", %{session: session} do
     create = "CREATE OR REPLACE TEMPORARY FUNCTION latu_twice(x INT) RETURNS INT RETURN x * 2"
     Latu.sql!(session, create)

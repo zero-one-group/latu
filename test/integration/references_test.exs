@@ -16,6 +16,7 @@ defmodule Latu.Integration.ReferencesTest do
     %{session: session, five: Latu.range(session, 5)}
   end
 
+  @tag sail: "a bad column reference has no Spark error class"
   test "a reference to a frame outside the plan is refused by Spark", %{
     session: session,
     five: five
@@ -26,6 +27,7 @@ defmodule Latu.Integration.ReferencesTest do
     assert error.message =~ "CANNOT_RESOLVE_DATAFRAME_COLUMN"
   end
 
+  @tag sail: "a bad column reference has no Spark error class"
   test "and so is one that matches two relations at once", %{five: five} do
     condition = Column.equal(Latu.col(five, :id), Latu.col(five, :id))
     joined = Latu.join(five, five, on: condition)
