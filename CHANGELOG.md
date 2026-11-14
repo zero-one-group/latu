@@ -3,6 +3,19 @@
 Latu follows [Semantic Versioning](https://semver.org). Before 1.0, a minor version may rename or
 remove; each such change is listed here with the migration in one line.
 
+## Unreleased
+
+**LakeSail works, with its gaps documented.** [LakeSail](https://hexdocs.pm/latu/lakesail.html)
+is a Rust Spark Connect server; most of Latu runs against it unchanged. The new page lists what
+Sail lacks, where its answers differ from Spark's, and how to start it so `spark_version/1` and
+`checkpoint/2` work. A nightly workflow runs the integration suite against Sail's latest release
+and blocks nothing.
+
+**A feature the server does not support says so.** Sail refuses one with a message that is only
+the feature's name, such as `collect metrics`. Latu now appends `(the server does not support
+this)` when the refusal is an `UnsupportedOperationException` with no Spark error class. Spark's
+own refusals are unchanged. Migration: nothing, unless you match on that message whole.
+
 ## 0.8.0 — 2026-09-18
 
 Fixes from a third review, and one small API addition: a new `identity/1` on `Latu.Session`, and a

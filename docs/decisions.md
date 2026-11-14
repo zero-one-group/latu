@@ -1909,3 +1909,40 @@ classifies itself by reading its `type` child, which a zero-row batch has no buf
 read as sparse and refused the whole result. A zero-length column now becomes a droppable piece
 from its `values` child, the same shape as a zero-row list, and `build/3` prunes it as before. An
 all-empty result keeps its named no-rows refusal.
+
+## 2026-11-14 — LakeSail: tagged gaps, a nightly run, and one message
+
+Latu works against LakeSail 0.7.3 with no Sail code path: 238 of 366 integration tests pass as
+they are. Supporting it means the four things below and stops there. Latu targets Spark 4.2.0;
+`docs/lakesail.md` is the record of what differs.
+
+**A gap is a tag on the test, not a branch in the code.** A test whose surface Sail lacks
+carries `@tag sail: "<reason>"`, the reason in Sail's terms. A tag moves with its test and is the
+record of why; a central list by name or line goes stale in silence. `sail_crash:` is separate
+because the gap run includes every `sail:` test, and one that kills the server fails everything
+after it. Latu does not detect Sail, for the reason the 2026-09-11 entry gives for versions: the
+page tells the user what to expect, and the messages say what happened.
+
+**`LATU_SERVER=sail` picks the exclusions in `test_helper.exs`.** ExUnit lets an include
+override every exclude, so `--include integration --exclude sail` would run the gaps anyway.
+The switch turns integration on by not excluding it.
+
+**The nightly is the one scheduled job.** The 2026-09-08 entry declined a cron because it would
+be a green run against the version `mix check.all` already covers. This one runs Sail's latest
+release against main: a new Sail release and a Latu change that breaks Sail are both news
+`mix check.all` cannot deliver. It never runs on a PR and blocks nothing, because Sail is
+pre-1.0 and its releases are not Latu's to gate on. A second run takes only the tagged gaps and
+lists those that pass, which is how a tag comes off. Sail runs from its own quick-start recipe,
+with `pyspark-client` installed because Sail answers `spark_version` by importing it. Sail has no
+equivalent of the reattach server's confs, so the reattach path goes unexercised there.
+
+**Sail's refusal of a missing feature gains one sentence.** It is `INTERNAL`, its message only
+the feature's name ("collect metrics"), under `java.lang.UnsupportedOperationException` with no
+error class. `Client.rpc_error/1` appends that the server does not support it in exactly that
+case. Spark's own unsupported operations carry an `UNSUPPORTED_FEATURE` class and are left as
+Spark wrote them.
+
+**Not worked around.** `Latu.Catalog` returns the server's columns, so Sail's `:tableName`
+arrives as `:tableName`; reading by position, as PySpark does, would change the module's
+documented contract for one server. The crash on sorting `to/2`'s result, `describe`'s row order,
+the `cov` and `corr` null rule and `confs/2`'s doubled prefix are Sail's to fix.

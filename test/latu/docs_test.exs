@@ -72,6 +72,7 @@ defmodule Latu.DocsTest do
     "usage-rules.md",
     "docs/deviations.md",
     "docs/spark-versions.md",
+    "docs/lakesail.md",
     "CONTRIBUTING.md"
   ]
 

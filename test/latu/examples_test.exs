@@ -34,6 +34,7 @@ defmodule Latu.ExamplesTest do
     "CLAUDE.md",
     "docs/deviations.md",
     "docs/spark-versions.md",
+    "docs/lakesail.md",
     "notebooks/quick_start.livemd"
   ]
 

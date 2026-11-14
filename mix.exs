@@ -63,6 +63,7 @@ defmodule Latu.MixProject do
         "usage-rules.md",
         "docs/deviations.md",
         "docs/spark-versions.md",
+        "docs/lakesail.md",
         "CONTRIBUTING.md"
       ],
       groups_for_extras: [
@@ -76,7 +77,8 @@ defmodule Latu.MixProject do
           "docs/cheatsheet.cheatmd",
           "usage-rules.md",
           "docs/deviations.md",
-          "docs/spark-versions.md"
+          "docs/spark-versions.md",
+          "docs/lakesail.md"
         ]
       ],
       # `mix docs` runs with warnings as errors, so the exemptions are named here. It warns on a
