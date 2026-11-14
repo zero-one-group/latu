@@ -1693,8 +1693,8 @@ The goldens step was skipped whenever the integration suite failed, which agains
 server it always does, so the run reported nothing about rendering. It now runs regardless.
 And GitHub annotates at most ten failures per step, so the two legs showed ten each and
 different tens, which read as two different failure sets when it was one truncated list twice.
-The suite's output is kept and every failing test goes into the run summary, with the closing
-`N tests, M failures` line. Reading the log is no longer needed.
+The suite's output is kept and every failing test goes into the run summary, with ExUnit's
+closing counts. Reading the log is no longer needed.
 
 `spark_version/1`'s integration test asserted `4.2` by name, which made it fail on every other
 tag by design. It now reads `SPARK_VERSION`, the same knob `docker-compose.yml` reads, so one

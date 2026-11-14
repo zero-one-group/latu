@@ -67,11 +67,11 @@ jobs:
           {
             echo "## Integration suite on Spark ${{ matrix.spark }}"
             echo
-            grep -E '^[0-9]+ tests?, ' test.log || echo "No summary line: the suite did not finish."
+            grep -E '^(Result|Failed): ' test.log || echo "No summary line: the suite did not finish."
             echo
-            if grep -qE '^\s+[0-9]+\) test ' test.log; then
+            if grep -qE '^ *[0-9]+\) test ' test.log; then
               echo '```'
-              grep -A3 -E '^\s+[0-9]+\) test ' test.log
+              grep -A3 -E '^ *[0-9]+\) test ' test.log
               echo '```'
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
