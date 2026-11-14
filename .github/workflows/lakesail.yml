@@ -57,10 +57,13 @@ jobs:
         shell: bash
 
       # Expected to fail. `--trace` prints a failure right under its test, which is how the
-      # summary tells the passes apart.
+      # summary tells the passes apart. Into a file only: on the step's output, setup-beam's
+      # problem matcher would annotate every expected failure as an error.
       - name: Tagged gaps
         if: always()
-        run: mix test --only sail --trace 2>&1 | tee gaps.log || true
+        run: |
+          mix test --only sail --trace > gaps.log 2>&1 || true
+          grep -E '^(Result|Failed): ' gaps.log || echo "No summary line: the run did not finish."
         shell: bash
 
       - name: Result goldens
