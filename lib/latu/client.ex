@@ -1207,7 +1207,17 @@ defmodule Latu.Client do
   defp rpc_error(%GRPC.RPCError{} = error) do
     fields = [status: error.status, details: error.details] ++ info(error)
 
-    Error.new(:rpc, older_server(error), fields)
+    Error.new(:rpc, error |> older_server() |> unsupported(fields), fields)
+  end
+
+  # LakeSail names a feature it lacks and nothing else ("collect metrics"); docs/lakesail.md.
+  defp unsupported(message, fields) do
+    if is_nil(fields[:error_class]) and
+         "java.lang.UnsupportedOperationException" in Keyword.get(fields, :classes, []) do
+      message <> " (the server does not support this)"
+    else
+      message
+    end
   end
 
   # Two shapes an older server answers a 4.2 client with, neither naming the cause. An unknown
