@@ -184,7 +184,9 @@ defmodule Latu.MixProject do
       {:ex_doc, "~> 0.36", only: :dev, runtime: false},
       # Optional, in `:kino`'s slot: `lib/latu/result/nx.ex` compiles to nothing without it,
       # and the probes under `dev/` use it too.
-      {:nx, "~> 0.13", optional: true}
+      {:nx, "~> 0.13", optional: true},
+      {:tidewave, "~> 0.8", only: :dev},
+      {:bandit, "~> 1.0", only: :dev}
     ]
   end
 
@@ -192,6 +194,10 @@ defmodule Latu.MixProject do
     [
       "proto.generate": &generate_proto/1,
       fixtures: &generate_fixtures/1,
+      # Tidewave's MCP server for Claude Code (`.mcp.json`). A library has no endpoint to
+      # plug it into, so it gets its own Bandit on :4000.
+      tidewave:
+        "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4000) end)'",
       # `--warnings-as-errors` because `mix test` compiles test files itself, outside
       # `elixirc_options`; without it a warning in test/ is the one kind CI lets through.
       check: [

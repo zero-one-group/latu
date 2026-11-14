@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(mix format:*)",
+      "Bash(mix compile:*)",
+      "Bash(mix test:*)",
+      "Bash(mix check:*)",
+      "Bash(mix check.all:*)",
+      "Bash(mix docs:*)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix deps.tree:*)",
+      "Bash(mix fixtures:*)",
+      "Bash(mix proto.generate:*)",
+      "Bash(mix run dev/cheatsheet.exs:*)",
+      "Bash(dev/check_protos.sh:*)",
+      "Bash(python3 dev/fixture_coverage.py:*)",
+      "Bash(dev/.venv/bin/python dev/make_arrow_fixtures.py --check:*)",
+      "Bash(docker compose down:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose up -d --force-recreate:*)",
+      "Bash(docker compose up -d --wait:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ],
+    "ask": [
+      "Bash(gh:*)"
+    ],
+    "deny": [
+      "Bash(mix hex.publish:*)",
+      "Bash(mix hex.retire:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Read(./.env*)"
+    ]
+  }
+}
